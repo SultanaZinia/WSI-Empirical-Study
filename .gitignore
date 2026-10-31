@@ -46,3 +46,6 @@ logs/
 .DS_Store
 .vscode/
 .idea/
+
+# Git bundles (transfer artifacts)
+*.bundle
