@@ -5,6 +5,7 @@ preprocess:
   patch_size: 256
   target_mpp: 0.5            # 20x equivalent
   label_overlap_threshold: 0.10
+  min_tissue_fraction: 0.0   # keep any grid cell with tissue in it (TRIDENT --min_tissue_proportion default)
 
 strata_mm:                   # largest contiguous lesion diameter
   itc_max: 0.2
