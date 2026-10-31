@@ -1,0 +1,21 @@
+# Install on Fir inside a virtualenv, from the Alliance wheelhouse:
+#   module load StdEnv/2023 python/3.11
+#   virtualenv --no-download $HOME/envs/lesionbench && source $HOME/envs/lesionbench/bin/activate
+#   pip install --no-index --upgrade pip
+#   pip install --no-index -r requirements-fir.txt
+#   pip install --no-index --no-deps -e .
+# Check availability first with: avail_wheels <name>
+# If a package is missing from the wheelhouse, install it on a login node (internet) and note it here.
+numpy
+scipy
+h5py
+shapely
+scikit-learn
+pyyaml
+torch
+timm
+huggingface_hub
+opencv-python-headless
+matplotlib
+pytest
+# openslide: check `module spider openslide` / `avail_wheels openslide-python`

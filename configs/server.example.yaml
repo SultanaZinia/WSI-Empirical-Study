@@ -1,0 +1,13 @@
+# Copy to configs/server.yaml on Fir (git-ignored) and fill in.
+# Any value can also be overridden by the environment variable shown in the comment.
+
+slurm:
+  account: def-CHANGEME          # SLURM_ACCOUNT  (def-<PI> or rrg-<PI>)
+
+paths:
+  data_root: /project/def-CHANGEME/USER/camelyon16    # DATA_ROOT   raw .tif WSIs + ASAP .xml
+  cache_root: /project/def-CHANGEME/USER/lesionbench/cache   # CACHE_ROOT  per-slide .h5 feature caches
+  output_root: /scratch/USER/lesionbench/outputs      # OUTPUT_ROOT runs, logs, metrics (copy keepers to $PROJECT)
+  hf_home: /project/def-CHANGEME/USER/hf_cache        # HF_HOME     pre-downloaded UNI / CONCH weights
+
+seed: 0

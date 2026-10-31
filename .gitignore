@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Data, caches, weights — never commit (live on Fir: $PROJECT / $SCRATCH)
+data/
+cache/
+outputs/
+runs/
+checkpoints/
+*.tif
+*.tiff
+*.svs
+*.ndpi
+*.mrxs
+*.xml
+*.h5
+*.hdf5
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.npy
+*.npz
+
+# Real server config / secrets (commit only *.example.yaml)
+configs/server.yaml
+configs/*.local.yaml
+.env
+
+# SLURM logs
+slurm-*.out
+logs/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

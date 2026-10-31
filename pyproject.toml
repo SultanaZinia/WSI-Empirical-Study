@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lesionbench"
+version = "0.1.0"
+description = "Matched-budget benchmark of token compression for rare lesions in whole-slide images"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "scipy",
+    "h5py",
+    "shapely>=2.0",
+    "scikit-learn",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+# Heavy / server-only deps. Install on Fir from the Alliance wheelhouse (see requirements-fir.txt).
+server = [
+    "torch",
+    "timm",
+    "huggingface_hub",
+    "openslide-python",
+    "opencv-python-headless",
+]
+viz = ["matplotlib"]
+dev = ["pytest", "ruff"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -m 'not server'"
+markers = [
+    "server: needs real CAMELYON16 data, model weights, GPU or OpenSlide; run only on Fir with `pytest -m server`",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

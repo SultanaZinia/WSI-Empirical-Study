@@ -1,0 +1,43 @@
+# Experiment-level settings shared by all runs. Server paths live in server.yaml.
+
+preprocess:
+  thumbnail_magnification: 1.25
+  patch_size: 256
+  target_mpp: 0.5            # 20x equivalent
+  label_overlap_threshold: 0.10
+
+strata_mm:                   # largest contiguous lesion diameter
+  itc_max: 0.2
+  micro_max: 2.0
+
+backbones:
+  primary: uni               # ViT-L/16, D=1024
+  secondary: conch           # ViT-B/16, D=512
+
+budgets: [32, 64, 128, 256]
+
+methods:
+  - random
+  - oracle
+  - abmil_topk
+  - siimil
+  - nrk_abmil
+  - lts
+  - agile_pruner
+  - tc_ssa
+  - slicechat_pmil
+
+training:
+  n_folds: 5
+  weak_supervision_only: true
+
+esi:
+  threshold: 1.5
+  svm_auc_threshold: 0.90
+
+stats:
+  bootstrap_iters: 1000
+  ci: 0.95
+  multiple_comparison: holm
+
+froc_fp_per_slide: [0.25, 0.5, 1, 2, 4, 8]
