@@ -1,5 +1,5 @@
 # Install on Fir inside a virtualenv, from the Alliance wheelhouse:
-#   module load StdEnv/2023 python/3.11
+#   module load StdEnv/2023 python/3.11 openslide/4.0.0
 #   virtualenv --no-download $HOME/envs/lesionbench && source $HOME/envs/lesionbench/bin/activate
 #   pip install --no-index --upgrade pip
 #   pip install --no-index -r requirements-fir.txt
@@ -15,7 +15,7 @@ pyyaml
 torch
 timm
 huggingface_hub
-opencv-python-headless
+# opencv: the wheelhouse only has a placeholder (opencv-noinstall); use `module load opencv` if ever needed
 matplotlib
 pytest
-# openslide: check `module spider openslide` / `avail_wheels openslide-python`
+openslide-python             # needs `module load openslide/4.0.0` for libopenslide

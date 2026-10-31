@@ -13,7 +13,7 @@ set -euo pipefail
 
 CONFIG=${1:-configs/server.yaml}
 
-module load StdEnv/2023 python/3.11
+module load StdEnv/2023 python/3.11 openslide/4.0.0
 source "$HOME/envs/lesionbench/bin/activate"
 
 # Compute nodes have no internet: everything must be pre-downloaded on a login node.

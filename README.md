@@ -27,7 +27,7 @@ pytest
 ## On Fir
 
 ```bash
-module load StdEnv/2023 python/3.11
+module load StdEnv/2023 python/3.11 openslide/4.0.0
 virtualenv --no-download $HOME/envs/lesionbench && source $HOME/envs/lesionbench/bin/activate
 pip install --no-index -r requirements-fir.txt && pip install --no-index --no-deps -e .
 cp configs/server.example.yaml configs/server.yaml   # then edit
