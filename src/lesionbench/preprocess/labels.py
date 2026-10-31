@@ -4,7 +4,7 @@ import logging
 
 import numpy as np
 import shapely
-from shapely.geometry import Polygon
+from shapely.geometry.base import BaseGeometry
 
 log = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 def label_patches(
     coords: np.ndarray,
     patch_size_l0: int,
-    lesion_polys: list[Polygon],
+    lesion_polys: list[BaseGeometry],
     overlap_threshold: float = 0.10,
 ) -> tuple[np.ndarray, np.ndarray, list[int]]:
     """Label each patch from its overlap with the lesions.

@@ -3,8 +3,13 @@
 import logging
 import xml.etree.ElementTree as ET
 
+import numpy as np
+import shapely
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 from scipy.spatial.distance import pdist
 from shapely.geometry import Polygon
+from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
 log = logging.getLogger(__name__)
@@ -34,25 +39,33 @@ def read_asap_xml(path) -> tuple[list[Polygon], list[Polygon]]:
     return tumor, exclusion
 
 
-def lesions(tumor: list[Polygon], exclusion: list[Polygon]) -> list[Polygon]:
-    """Contiguous lesion components (tumor minus exclusions), ordered top-to-bottom then left-to-right.
+def lesions(tumor: list[Polygon], exclusion: list[Polygon], merge_px: float = 0.0) -> list[BaseGeometry]:
+    """Lesions (tumor minus exclusions), ordered top-to-bottom then left-to-right.
 
-    The list index is the ``lesion_id``.
+    Contiguous components closer than ``merge_px`` are merged into one lesion (a MultiPolygon), as the
+    official CAMELYON16 evaluation does with 75 µm. The list index is the ``lesion_id``.
     """
     region = unary_union(tumor)
     if exclusion:
         region = region.difference(unary_union(exclusion))
     parts = getattr(region, "geoms", [region])
     comps = [p for p in parts if isinstance(p, Polygon) and p.area > 0]
+    if merge_px > 0 and len(comps) > 1:
+        pairs = shapely.STRtree(comps).query(comps, predicate="dwithin", distance=merge_px)
+        adj = coo_matrix((np.ones(pairs.shape[1]), (pairs[0], pairs[1])), shape=(len(comps),) * 2)
+        _, group = connected_components(adj, directed=False)
+        comps = [unary_union([comps[i] for i in np.flatnonzero(group == k)]) for k in range(group.max() + 1)]
     return sorted(comps, key=lambda p: (p.bounds[1], p.bounds[0]))
 
 
-def max_feret(poly: Polygon) -> float:
-    """Greatest dimension of a polygon: the largest distance between two of its points (input units)."""
+def max_feret(poly: BaseGeometry) -> float:
+    """Greatest dimension of a lesion: the largest distance between two of its points (input units)."""
     return float(pdist(list(poly.convex_hull.exterior.coords)).max())
 
 
-def stratum(lesion_polys: list[Polygon], mpp0: float, itc_max: float = 0.2, micro_max: float = 2.0) -> str:
+def stratum(
+    lesion_polys: list[BaseGeometry], mpp0: float, itc_max: float = 0.2, micro_max: float = 2.0
+) -> str:
     """Slide stratum from its largest lesion's max Feret diameter in mm.
 
     negative: no lesions; itc: < itc_max; micro: itc_max..micro_max; macro: > micro_max.

@@ -126,6 +126,27 @@ def test_lesions_exclusion_splits_a_lesion():
 
 def test_lesions_negative_slide():
     assert lesions([], []) == []
+    assert lesions([], [], merge_px=10) == []
+
+
+def test_lesions_merge_nearby_regions():
+    # Gaps: a-b 10 px, b-c 10 px (chain), c-d 30 px.
+    a, b, c, d = box(0, 0, 10, 10), box(20, 0, 30, 10), box(40, 0, 50, 10), box(80, 0, 90, 10)
+    assert len(lesions([a, b, c, d], [])) == 4
+    assert len(lesions([a, b, c, d], [], merge_px=9.9)) == 4
+    merged = lesions([d, c, b, a], [], merge_px=10)  # a-b-c chain into one lesion; d stays apart
+    assert len(merged) == 2
+    assert merged[0].area == 300 and merged[0].geom_type == "MultiPolygon"
+    assert max_feret(merged[0]) == pytest.approx((50**2 + 10**2) ** 0.5)  # spans the whole group
+    assert merged[1].bounds == (80, 0, 90, 10)
+
+
+def test_merge_changes_stratum():
+    # At 0.25 um/px (1 mm = 4000 px): two 400 px squares (diag 0.141 mm, ITC) 200 px = 0.05 mm apart.
+    # Merged, the group spans 1000 x 400 px -> 0.269 mm, micro.
+    a, b = box(0, 0, 400, 400), box(600, 0, 1000, 400)
+    assert stratum(lesions([a, b], []), mpp0=0.25) == "itc"
+    assert stratum(lesions([a, b], [], merge_px=75 / 0.25), mpp0=0.25) == "micro"
 
 
 def test_max_feret_rectangle_diagonal():
@@ -173,6 +194,13 @@ def test_label_patches_largest_overlap_wins_and_itc_is_logged(caplog):
     assert ids.tolist() == [1, -1, -1]
     assert unlabeled == [0, 2]
     assert "lesion 2" in caplog.text
+
+
+def test_label_patches_merged_lesion_sums_its_parts():
+    # One merged lesion made of two pieces inside patch 1: 6/100 + 6/100 = 0.12 -> positive.
+    (lesion,) = lesions([box(10, 0, 13, 2), box(15, 0, 18, 2)], [], merge_px=5)
+    labels, ids, unlabeled = label_patches(COORDS, 10, [lesion])
+    assert ids.tolist() == [-1, 0, -1] and unlabeled == []
 
 
 def test_label_patches_negative_slide_and_no_patches():
