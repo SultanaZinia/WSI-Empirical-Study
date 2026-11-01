@@ -40,10 +40,12 @@ def evaluate(model: nn.Module, bags) -> tuple[float, list[float]]:
     return total / max(len(bags), 1), probs
 
 
-def train_mil(build_model: Callable[[], nn.Module], train_bags, val_bags, tcfg: dict, seed: int):
+def train_mil(build_model: Callable[[], nn.Module], train_bags, val_bags, tcfg: dict, seed: int,
+              on_epoch: Callable[[nn.Module, int], None] | None = None):
     """Train with Adam + early stopping on val loss; returns (best model, history).
 
-    The model is built after seeding so its initial weights are reproducible too.
+    The model is built after seeding so its initial weights are reproducible too. ``on_epoch(model, epoch)``
+    runs before each epoch (e.g. a temperature schedule).
     """
     torch.manual_seed(seed)
     model = build_model()
@@ -54,6 +56,8 @@ def train_mil(build_model: Callable[[], nn.Module], train_bags, val_bags, tcfg: 
     best_state, history = copy.deepcopy(model.state_dict()), []
 
     for epoch in range(tcfg["max_epochs"]):
+        if on_epoch is not None:
+            on_epoch(model, epoch)
         model.train()
         train_loss = 0.0
         for i in torch.randperm(len(train_bags), generator=g).tolist():
