@@ -63,16 +63,17 @@ def max_feret(poly: BaseGeometry) -> float:
     return float(pdist(list(poly.convex_hull.exterior.coords)).max())
 
 
-def stratum(
-    lesion_polys: list[BaseGeometry], mpp0: float, itc_max: float = 0.2, micro_max: float = 2.0
-) -> str:
-    """Slide stratum from its largest lesion's max Feret diameter in mm.
-
-    AJCC bins: negative: no lesions; itc: <= itc_max; micro: > itc_max and <= micro_max; macro: > micro_max.
-    """
-    if not lesion_polys:
-        return "negative"
-    mm = max(max_feret(p) for p in lesion_polys) * mpp0 / 1000.0
+def size_class(mm: float, itc_max: float = 0.2, micro_max: float = 2.0) -> str:
+    """AJCC size class of one lesion: itc <= itc_max < micro <= micro_max < macro (diameter in mm)."""
     if mm > micro_max:
         return "macro"
     return "micro" if mm > itc_max else "itc"
+
+
+def stratum(
+    lesion_polys: list[BaseGeometry], mpp0: float, itc_max: float = 0.2, micro_max: float = 2.0
+) -> str:
+    """Slide stratum: "negative" without lesions, else the size class of its largest lesion (max Feret)."""
+    if not lesion_polys:
+        return "negative"
+    return size_class(max(max_feret(p) for p in lesion_polys) * mpp0 / 1000.0, itc_max, micro_max)

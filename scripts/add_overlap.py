@@ -1,10 +1,11 @@
-"""Add (patch, lesion, overlap) pairs to existing patch files, from the annotations alone (no slide reads).
+"""Add overlap pairs and lesion diameters to existing patch files, from the XMLs alone (no slide reads).
 
     python scripts/add_overlap.py --config configs/server.yaml
 
-For each CACHE_ROOT/patches/<slide>.h5 without a complete /overlap group, rebuilds the slide's lesions from
-DATA_ROOT/annotations/<slide>.xml with the merge distance the file was made with, checks the lesion count
-against the file, and writes /overlap. Slides without an XML get an empty group. Exits non-zero on failure.
+For each CACHE_ROOT/patches/<slide>.h5 whose /overlap group is missing or older, rebuilds the slide's
+lesions from DATA_ROOT/annotations/<slide>.xml with the merge distance the file was made with, checks the
+lesion count against the file, and writes /overlap. Slides without an XML get an empty group. Exits non-zero
+on failure.
 """
 
 import argparse
@@ -17,7 +18,7 @@ import h5py
 from lesionbench.config import load_config
 from lesionbench.preprocess.annotations import lesions, read_asap_xml
 from lesionbench.preprocess.labels import lesion_overlaps
-from lesionbench.preprocess.pipeline import write_overlap
+from lesionbench.preprocess.pipeline import lesion_diameters_um, write_overlap
 
 log = logging.getLogger("add_overlap")
 
@@ -34,7 +35,8 @@ def main():
     for p in sorted((Path(cfg["paths"]["cache_root"]) / "patches").glob("*.h5")):
         try:
             with h5py.File(p, "a") as f:
-                if f.get("overlap") is not None and f["overlap"].attrs.get("complete", False):
+                g = f.get("overlap")
+                if g is not None and g.attrs.get("complete", False) and "lesion_diameter_um" in g:
                     continue
                 a = dict(f.attrs)
                 sid, mpp0 = str(a["slide_id"]), float(a["mpp0"])
@@ -44,7 +46,7 @@ def main():
                 if len(les) != int(a["n_lesions"]):
                     raise ValueError(f"{len(les)} lesions rebuilt, file has {a['n_lesions']}")
                 pairs = lesion_overlaps(f["coords"][:], int(a["patch_size_level0"]), les)
-                write_overlap(f, *pairs)
+                write_overlap(f, *pairs, lesion_diameters_um(les, mpp0))
             log.info("%s: %d lesions, %d overlap pairs", sid, len(les), len(pairs[0]))
         except Exception:
             log.exception("%s: failed", p.stem)

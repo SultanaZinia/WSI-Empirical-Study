@@ -65,6 +65,7 @@ def test_write_patch_h5_schema_and_atomic(tmp_path):
         assert f["overlap/rows"][:].tolist() == [res["coords"].tolist().index([1024, 0])]
         assert f["overlap/lesion_ids"][:].tolist() == [0]
         np.testing.assert_allclose(f["overlap/fracs"][:], [160000 / 262144], rtol=1e-6)
+        np.testing.assert_allclose(f["overlap/lesion_diameter_um"][:], [400 * 2**0.5 * 0.25])
 
 
 def test_load_config_env_overrides(tmp_path, monkeypatch):

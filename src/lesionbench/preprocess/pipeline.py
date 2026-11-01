@@ -7,7 +7,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from .annotations import lesions, read_asap_xml, stratum
+from .annotations import lesions, max_feret, read_asap_xml, stratum
 from .grid import patch_grid, patch_size_level0
 from .labels import label_patches, lesion_overlaps
 from .tissue import tissue_mask
@@ -26,7 +26,7 @@ def preprocess_slide(slide_id, thumb_rgb, mask_downsample, level0_size, mpp0, xm
         "coords": coords,
         "patch_labels": labels,
         "lesion_ids": lesion_ids,
-        "overlap": lesion_overlaps(coords, ps0, les),
+        "overlap": (*lesion_overlaps(coords, ps0, les), lesion_diameters_um(les, mpp0)),
         "attrs": {
             "slide_id": slide_id,
             "mpp0": mpp0,
@@ -57,12 +57,18 @@ def write_patch_h5(path, result: dict, **extra_attrs) -> None:
     os.replace(tmp, path)
 
 
-def write_overlap(f, rows, lesions, fracs) -> None:
-    """Store the (patch, lesion, overlap) pairs under /overlap, replacing any earlier copy."""
+def lesion_diameters_um(lesion_polys, mpp0: float) -> np.ndarray:
+    """Max Feret diameter of each lesion in µm, in lesion-id order."""
+    return np.asarray([max_feret(p) * mpp0 for p in lesion_polys], dtype=np.float64)
+
+
+def write_overlap(f, rows, lesions, fracs, diameter_um) -> None:
+    """Store (patch, lesion, overlap) pairs and lesion diameters under /overlap, replacing any old copy."""
     if "overlap" in f:
         del f["overlap"]
     g = f.create_group("overlap")
     g.create_dataset("rows", data=np.asarray(rows, dtype=np.int64))
     g.create_dataset("lesion_ids", data=np.asarray(lesions, dtype=np.int32))
     g.create_dataset("fracs", data=np.asarray(fracs, dtype=np.float32))
+    g.create_dataset("lesion_diameter_um", data=np.asarray(diameter_um, dtype=np.float64))
     g.attrs["complete"] = True
