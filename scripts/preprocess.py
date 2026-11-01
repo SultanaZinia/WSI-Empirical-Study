@@ -12,21 +12,13 @@ import logging
 import subprocess
 from pathlib import Path
 
-import numpy as np
 import openslide
 
 from lesionbench.config import ROOT, load_config
 from lesionbench.preprocess.pipeline import preprocess_slide, write_patch_h5
+from lesionbench.preprocess.wsi import read_thumbnail
 
 log = logging.getLogger("preprocess")
-
-
-def read_thumbnail(slide, thumb_mpp):
-    """Whole slide at the pyramid level closest to (not finer than needed for) ``thumb_mpp``."""
-    mpp0 = float(slide.properties[openslide.PROPERTY_NAME_MPP_X])
-    level = slide.get_best_level_for_downsample(thumb_mpp / mpp0)
-    img = slide.read_region((0, 0), level, slide.level_dimensions[level]).convert("RGB")
-    return np.asarray(img), float(slide.level_downsamples[level]), mpp0
 
 
 def main():
