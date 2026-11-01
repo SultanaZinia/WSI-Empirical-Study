@@ -60,7 +60,8 @@ def test_extract_features_keeps_row_order_across_batches():
 
 def test_write_feature_h5_schema_and_checks(tmp_path):
     res = {"coords": np.array([[0, 0], [8, 0]]), "patch_labels": np.array([0, 1]),
-           "lesion_ids": np.array([-1, 0]), "attrs": {"slide_id": "s", "stratum": "itc"}}
+           "lesion_ids": np.array([-1, 0]), "overlap": (np.array([1]), np.array([0]), np.array([0.5])),
+           "attrs": {"slide_id": "s", "stratum": "itc"}}
     write_patch_h5(tmp_path / "patches" / "s.h5", res)
     out = tmp_path / "uni" / "s.h5"
     write_feature_h5(out, np.ones((2, 4)), tmp_path / "patches" / "s.h5", "uni", git_sha="abc")

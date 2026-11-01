@@ -61,6 +61,10 @@ def test_write_patch_h5_schema_and_atomic(tmp_path):
         assert f["patch_labels"].dtype == np.uint8 and f["lesion_ids"].dtype == np.int32
         np.testing.assert_array_equal(f["coords"][:], res["coords"])
         assert f.attrs["slide_id"] == "s" and f.attrs["git_sha"] == "abc" and f.attrs["stratum"] == "itc"
+        assert f["overlap"].attrs["complete"]
+        assert f["overlap/rows"][:].tolist() == [res["coords"].tolist().index([1024, 0])]
+        assert f["overlap/lesion_ids"][:].tolist() == [0]
+        np.testing.assert_allclose(f["overlap/fracs"][:], [160000 / 262144], rtol=1e-6)
 
 
 def test_load_config_env_overrides(tmp_path, monkeypatch):

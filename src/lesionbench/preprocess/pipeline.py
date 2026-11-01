@@ -9,7 +9,7 @@ import numpy as np
 
 from .annotations import lesions, read_asap_xml, stratum
 from .grid import patch_grid, patch_size_level0
-from .labels import label_patches
+from .labels import label_patches, lesion_overlaps
 from .tissue import tissue_mask
 
 
@@ -26,6 +26,7 @@ def preprocess_slide(slide_id, thumb_rgb, mask_downsample, level0_size, mpp0, xm
         "coords": coords,
         "patch_labels": labels,
         "lesion_ids": lesion_ids,
+        "overlap": lesion_overlaps(coords, ps0, les),
         "attrs": {
             "slide_id": slide_id,
             "mpp0": mpp0,
@@ -51,5 +52,17 @@ def write_patch_h5(path, result: dict, **extra_attrs) -> None:
         f.create_dataset("coords", data=result["coords"].astype(np.int64))
         f.create_dataset("patch_labels", data=result["patch_labels"].astype(np.uint8))
         f.create_dataset("lesion_ids", data=result["lesion_ids"].astype(np.int32))
+        write_overlap(f, *result["overlap"])
         f.attrs.update({**result["attrs"], **extra_attrs})
     os.replace(tmp, path)
+
+
+def write_overlap(f, rows, lesions, fracs) -> None:
+    """Store the (patch, lesion, overlap) pairs under /overlap, replacing any earlier copy."""
+    if "overlap" in f:
+        del f["overlap"]
+    g = f.create_group("overlap")
+    g.create_dataset("rows", data=np.asarray(rows, dtype=np.int64))
+    g.create_dataset("lesion_ids", data=np.asarray(lesions, dtype=np.int32))
+    g.create_dataset("fracs", data=np.asarray(fracs, dtype=np.float32))
+    g.attrs["complete"] = True

@@ -18,6 +18,10 @@ backbones:
 
 budgets: [32, 64, 128, 256]
 
+# LSR is reported at every hit threshold (patch overlap with the lesion; 0 = any overlap). No single primary
+# threshold yet: to be fixed from UNI's measured detectability (docs/metrics.md).
+lsr_overlap_thresholds: [0.0, 0.05, 0.10, 0.25, 0.50]
+
 methods:                     # verified against papers/code on 2026-10-31; see docs/deviations.md
   - random
   - oracle

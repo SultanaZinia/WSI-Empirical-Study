@@ -4,7 +4,14 @@ import numpy as np
 import pytest
 
 from lesionbench.metrics.encoder import esi, svm_patch_auc
-from lesionbench.metrics.retention import cov_at_k, lsr_at_k, retained_from_assignment, sdi, tep_at_k
+from lesionbench.metrics.retention import (
+    cov_at_k,
+    lsr_at_k,
+    lsr_curve,
+    retained_from_assignment,
+    sdi,
+    tep_at_k,
+)
 
 # 6 patches: lesion 0 covers rows 0-1, lesion 1 covers row 4, lesion 2 has no positive patch.
 Y = np.array([1, 1, 0, 0, 1, 0])
@@ -76,3 +83,39 @@ def test_svm_patch_auc_separable_random_and_degenerate():
     assert svm_patch_auc(noise, y, seed=1) == svm_patch_auc(noise, y, seed=1)  # deterministic per seed
     one_pos = np.r_[1, np.zeros(9, int)]
     assert math.isnan(svm_patch_auc(rng.normal(size=(10, 4)), one_pos, seed=0))
+
+
+# (patch, lesion, overlap) pairs: lesion 0 on rows 0 (0.60) and 1 (0.08); lesion 1 on row 4 (0.30);
+# lesion 2 only on row 5 (0.02); row 3 touches lesions 0 (0.05) and 1 (0.12).
+OV_ROWS = np.array([0, 1, 3, 3, 4, 5])
+OV_LES = np.array([0, 0, 0, 1, 1, 2])
+OV_FRAC = np.array([0.60, 0.08, 0.05, 0.12, 0.30, 0.02])
+TS = [0.0, 0.05, 0.10, 0.25, 0.50]
+
+
+@pytest.mark.parametrize("retained,expected", [
+    ([1, 5], [2 / 3, 1 / 3, 0, 0, 0]),       # t=0: lesions 0, 2; t=0.05: lesion 0 (0.08); t>=0.10: none
+    ([3], [2 / 3, 2 / 3, 1 / 3, 0, 0]),      # one patch can hit two lesions; 0.05 counts at t = 0.05 (>=)
+    ([0, 4], [2 / 3, 2 / 3, 2 / 3, 2 / 3, 1 / 3]),
+    ([2], [0, 0, 0, 0, 0]),                 # a patch with no lesion
+    (range(6), [1, 2 / 3, 2 / 3, 2 / 3, 1 / 3]),
+])
+def test_lsr_curve_hand_computed(retained, expected):
+    out = lsr_curve(list(retained), OV_ROWS, OV_LES, OV_FRAC, 3, TS)
+    assert list(out) == TS
+    assert [out[t] for t in TS] == pytest.approx(expected)
+
+
+def test_lsr_curve_no_lesions_and_unhittable_denominator():
+    out = lsr_curve([0], np.zeros(0, int), np.zeros(0, int), np.zeros(0), 0, TS)
+    assert all(math.isnan(v) for v in out.values())
+    # A fourth lesion with no overlap pairs stays in the denominator.
+    assert lsr_curve(range(6), OV_ROWS, OV_LES, OV_FRAC, 4, [0.0])[0.0] == pytest.approx(3 / 4)
+
+
+def test_lsr_curve_matches_lsr_at_k_at_label_threshold():
+    # With one lesion per patch, lsr_curve at 0.10 equals lsr_at_k on the 10%-thresholded lesion ids.
+    rows, les, frac = np.array([0, 1, 4]), np.array([0, 0, 1]), np.array([0.5, 0.2, 0.3])
+    ids = np.array([0, 0, -1, -1, 1, -1])
+    for retained in ([0], [1, 2], [4], [2, 3], range(6)):
+        assert lsr_curve(list(retained), rows, les, frac, 3, [0.10])[0.10] == lsr_at_k(list(retained), ids, 3)

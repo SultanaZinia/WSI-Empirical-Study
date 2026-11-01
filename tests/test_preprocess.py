@@ -6,7 +6,7 @@ from shapely.geometry import Polygon, box
 
 from lesionbench.preprocess.annotations import lesions, max_feret, read_asap_xml, stratum
 from lesionbench.preprocess.grid import patch_grid, patch_size_level0
-from lesionbench.preprocess.labels import label_patches
+from lesionbench.preprocess.labels import label_patches, lesion_overlaps
 from lesionbench.preprocess.tissue import otsu_threshold, tissue_mask
 
 # --- tissue ---------------------------------------------------------------------------------------
@@ -156,7 +156,8 @@ def test_max_feret_rectangle_diagonal():
 
 @pytest.mark.parametrize("w,h,expected", [
     (100, 100, "itc"),      # diag 141 px = 0.035 mm
-    (480, 640, "micro"),    # diag 800 px = 0.2 mm exactly -> micro
+    (480, 640, "itc"),      # diag 800 px = 0.2 mm exactly -> itc (AJCC: ITC <= 0.2 mm)
+    (481, 640, "micro"),    # just over 0.2 mm -> micro
     (4800, 6400, "micro"),  # diag 8000 px = 2.0 mm exactly -> micro
     (6000, 6400, "macro"),
 ])
@@ -208,3 +209,18 @@ def test_label_patches_negative_slide_and_no_patches():
     assert labels.tolist() == [0, 0, 0] and ids.tolist() == [-1, -1, -1] and unlabeled == []
     labels, ids, unlabeled = label_patches(np.zeros((0, 2)), 10, [box(0, 0, 5, 5)])
     assert len(labels) == 0 and unlabeled == [0]
+
+
+def test_lesion_overlaps_keeps_every_pair_above_zero():
+    # Lesion 0 covers 0.2 of patch 0 and 0.3 of patch 1; lesion 1 covers 0.05 of patch 2 (below the 10%
+    # label threshold, but still stored); lesion 2 touches nothing.
+    polys = [box(8, 0, 13, 10), box(21, 0, 22, 5), box(50, 50, 51, 51)]
+    rows, ids, fracs = lesion_overlaps(COORDS, 10, polys)
+    assert rows.tolist() == [0, 1, 2] and ids.tolist() == [0, 0, 1]
+    np.testing.assert_allclose(fracs, [0.2, 0.3, 0.05], rtol=1e-6)
+    assert rows.dtype == np.int64 and ids.dtype == np.int32 and fracs.dtype == np.float32
+
+
+def test_lesion_overlaps_empty():
+    rows, ids, fracs = lesion_overlaps(COORDS, 10, [])
+    assert len(rows) == len(ids) == len(fracs) == 0

@@ -26,6 +26,19 @@ def lsr_at_k(retained, lesion_ids, n_lesions: int) -> float:
     return float((hit >= 0).sum() / n_lesions)
 
 
+def lsr_curve(retained, overlap_rows, overlap_lesions, overlap_fracs, n_lesions: int, thresholds) -> dict:
+    """LSR@K at several hit thresholds, from the stored (patch, lesion, overlap) pairs.
+
+    Lesion m is hit at threshold t if a retained patch overlaps it by ``>= t``; t = 0 means any overlap (> 0).
+    Same denominator as ``lsr_at_k``: all lesions on the slide. NaN on slides without lesions.
+    """
+    if n_lesions == 0:
+        return {t: float("nan") for t in thresholds}
+    kept = np.isin(np.asarray(overlap_rows), np.asarray(retained, dtype=int))
+    les, frac = np.asarray(overlap_lesions)[kept], np.asarray(overlap_fracs, dtype=float)[kept]
+    return {t: float(len(np.unique(les[frac >= t] if t > 0 else les)) / n_lesions) for t in thresholds}
+
+
 def tep_at_k(retained, patch_labels) -> float:
     """Purity of the retained set: retained positives / number retained (= K unless K > N)."""
     retained = np.asarray(retained, dtype=int)

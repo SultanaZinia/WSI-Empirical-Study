@@ -68,11 +68,11 @@ def stratum(
 ) -> str:
     """Slide stratum from its largest lesion's max Feret diameter in mm.
 
-    negative: no lesions; itc: < itc_max; micro: itc_max..micro_max; macro: > micro_max.
+    AJCC bins: negative: no lesions; itc: <= itc_max; micro: > itc_max and <= micro_max; macro: > micro_max.
     """
     if not lesion_polys:
         return "negative"
     mm = max(max_feret(p) for p in lesion_polys) * mpp0 / 1000.0
     if mm > micro_max:
         return "macro"
-    return "micro" if mm >= itc_max else "itc"
+    return "micro" if mm > itc_max else "itc"
