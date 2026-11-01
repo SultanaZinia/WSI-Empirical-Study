@@ -32,6 +32,14 @@ methods:
 training:
   n_folds: 5
   weak_supervision_only: true
+  # CLAM defaults (mahmoodlab/CLAM main.py, core_utils.EarlyStopping), with early stopping enabled
+  optimizer: adam
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  max_epochs: 200
+  patience: 20               # epochs without val-loss improvement
+  stop_epoch: 50             # never stop before this epoch
+  dropout: 0.25
 
 esi:
   threshold: 1.5
