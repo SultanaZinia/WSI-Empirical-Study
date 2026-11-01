@@ -44,12 +44,12 @@ def sdi(W, patch_labels, eps: float = 1e-6) -> np.ndarray:
 def retained_from_assignment(W, rule: str = "argmax", threshold: float | None = None) -> np.ndarray:
     """Hard retention for merging methods: sorted unique patch rows a slot ``W`` (K, N) keeps.
 
-    ``argmax``: each slot keeps its largest contributor.
+    ``argmax``: each non-empty slot keeps its largest contributor (an all-zero slot keeps nothing).
     ``threshold``: every patch with ``W[k, i] > threshold`` in any slot.
     """
     W = np.asarray(W, dtype=float)
     if rule == "argmax":
-        return np.unique(W.argmax(axis=1))
+        return np.unique(W[W.any(axis=1)].argmax(axis=1))
     if rule == "threshold":
         if threshold is None:
             raise ValueError("rule='threshold' needs a threshold")

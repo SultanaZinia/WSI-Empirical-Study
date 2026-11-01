@@ -52,6 +52,9 @@ def test_retained_from_assignment_rules():
         retained_from_assignment(W, "threshold")
     with pytest.raises(ValueError):
         retained_from_assignment(W, "nope")
+    empty_slot = np.vstack([W, np.zeros(6)])  # a slot no patch was routed to must not "retain" row 0
+    np.testing.assert_array_equal(retained_from_assignment(empty_slot), [0, 2])
+    np.testing.assert_array_equal(retained_from_assignment(np.zeros((2, 6))), [])
 
 
 def test_esi_hand_computed():
