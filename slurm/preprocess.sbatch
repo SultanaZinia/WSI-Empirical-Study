@@ -2,9 +2,9 @@
 # Tissue grid + patch labels for all slides (CPU only). Re-submit to resume: finished slides are skipped.
 # Submit from the repo root:  sbatch --account=$SLURM_ACCOUNT slurm/preprocess.sbatch configs/server.yaml
 #SBATCH --job-name=preprocess
-#SBATCH --time=03:00:00
+#SBATCH --time=01:00:00
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=16G
+#SBATCH --mem=4G
 #SBATCH --array=0-15
 #SBATCH --output=logs/%x-%A_%a.out
 
