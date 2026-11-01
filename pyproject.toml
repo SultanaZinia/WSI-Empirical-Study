@@ -21,13 +21,15 @@ dependencies = [
 # Heavy / server-only deps. Install on Fir from the Alliance wheelhouse (see requirements-fir.txt).
 server = [
     "torch",
+    "torchvision",
+    "pillow",
     "timm",
     "huggingface_hub",
     "openslide-python",
     "opencv-python-headless",
 ]
 viz = ["matplotlib"]
-dev = ["pytest", "ruff", "torch"]
+dev = ["pytest", "ruff", "torch", "torchvision"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

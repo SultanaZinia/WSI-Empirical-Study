@@ -13,6 +13,8 @@ shapely
 scikit-learn
 pyyaml
 torch
+torchvision
+pillow
 timm
 huggingface_hub
 # opencv: the wheelhouse only has a placeholder (opencv-noinstall); use `module load opencv` if ever needed
