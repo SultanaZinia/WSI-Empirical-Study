@@ -18,16 +18,16 @@ backbones:
 
 budgets: [32, 64, 128, 256]
 
-methods:
+methods:                     # verified against papers/code on 2026-10-31; see docs/deviations.md
   - random
   - oracle
-  - abmil_topk
-  - siimil
-  - nrk_abmil
-  - lts
-  - agile_pruner
-  - tc_ssa
-  - slicechat_pmil
+  - abmil_topk               # Ilse et al. 2018 (gated attention)
+  - siimil                   # Su et al. 2023, arXiv 2301.07700, github.com/JoeSu666/SiiMIL
+  - nrk_abmil                # Sajjad et al. 2023, Cancers 15(13):3428, github.com/cialab/NRKMIL
+  - lts                      # Chen et al. 2026, arXiv 2606.08641 (no public code)
+  - slicechat                # Bozkurt et al. 2026, arXiv 2609.24894, github.com/ali-kerem/SLICEChat (progressive pruning)
+  - tc_ssa                   # Chen, Young, Xu 2026, arXiv 2603.01143 (merging, K slots)
+  - ptcmil                   # Zhao et al. 2025, arXiv 2507.18848, github.com/ubc-tea/PTCMIL (merging)
 
 training:
   n_folds: 5
