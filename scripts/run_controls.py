@@ -1,0 +1,63 @@
+"""Random and Oracle controls at every budget K, from the patch files alone (no features needed).
+
+    python scripts/run_controls.py --config configs/server.yaml
+
+Reads CACHE_ROOT/patches/*.h5; writes OUTPUT_ROOT/controls/metrics.csv (one row per slide x method x K)
+and run.json (config, git SHA, seed). Per-slide seed = crc32(slide_id) XOR config seed.
+"""
+
+import argparse
+import csv
+import json
+import subprocess
+import zlib
+from pathlib import Path
+
+import h5py
+import torch
+
+from lesionbench.config import ROOT, load_config
+from lesionbench.metrics.retention import cov_at_k, lsr_at_k, tep_at_k
+from lesionbench.selectors.controls import OracleSelector, RandomSelector
+
+FIELDS = ["slide_id", "split", "stratum", "n_patches", "n_pos", "n_lesions", "method", "K", "seed",
+          "cov", "lsr", "tep"]
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--config", required=True)
+    args = ap.parse_args()
+
+    cfg = load_config(args.config)
+    out_dir = Path(cfg["paths"]["output_root"]) / "controls"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    git = ["git", "-C", str(ROOT), "rev-parse", "HEAD"]
+    sha = subprocess.run(git, capture_output=True, text=True).stdout.strip()
+    (out_dir / "run.json").write_text(json.dumps({"git_sha": sha, "config": cfg}, indent=1, default=str))
+
+    methods = {"random": RandomSelector(), "oracle": OracleSelector()}
+    with open(out_dir / "metrics.csv", "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=FIELDS)
+        w.writeheader()
+        for p in sorted((Path(cfg["paths"]["cache_root"]) / "patches").glob("*.h5")):
+            with h5py.File(p) as f:
+                labels, ids, a = f["patch_labels"][:], f["lesion_ids"][:], dict(f.attrs)
+            sid = str(a["slide_id"])
+            seed = zlib.crc32(sid.encode()) ^ int(cfg["seed"])
+            feats, y = torch.empty(len(labels), 0), torch.from_numpy(labels)
+            for name, sel in methods.items():
+                for K in cfg["budgets"]:
+                    idx = sel.select(feats, K, patch_labels=y, seed=seed).retained_idx.numpy()
+                    w.writerow({
+                        "slide_id": sid, "split": "test" if sid.startswith("test_") else "train",
+                        "stratum": a["stratum"], "n_patches": len(labels), "n_pos": int(labels.sum()),
+                        "n_lesions": int(a["n_lesions"]), "method": name, "K": K, "seed": seed,
+                        "cov": cov_at_k(idx, labels), "lsr": lsr_at_k(idx, ids, int(a["n_lesions"])),
+                        "tep": tep_at_k(idx, labels),
+                    })
+    print(out_dir / "metrics.csv")
+
+
+if __name__ == "__main__":
+    main()

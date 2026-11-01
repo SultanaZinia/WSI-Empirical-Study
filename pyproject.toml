@@ -27,7 +27,7 @@ server = [
     "opencv-python-headless",
 ]
 viz = ["matplotlib"]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "ruff", "torch"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
