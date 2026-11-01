@@ -19,7 +19,7 @@ The planning document came from an LLM conversation. We checked every named meth
 | NRK-ABMIL | **A step is missing from the official repo**: the notebooks load a pooled key bank (`train_non_redundant.npy`), but the pooling code is not included. It is also nearly the same method as SiiMIL (same lab; only the key-bank construction differs), so expect correlated results. | Concatenate per-slide banks; logged as unverified. |
 | SiiMIL, NRK-ABMIL | They keep a **percentage** of patches (30% and ~10%), not exactly K. | Top-K by each method's own score. |
 | LTS, TC-SSA, SLICEChat | Originally trained with a **language-model text loss** (slide VQA), not slide labels. | Retrained with slide-label MIL losses. This is an adaptation and must be stated. |
-| SLICEChat | Tied to CONCH v1.5 features, its own slide encoder, Mamba GPU kernels, and LLM training. | Retrain on our features (to do). |
+| SLICEChat | Tied to CONCH v1.5 features, its own slide encoder (pretrained by MAE on 11,410 TCGA slides), Mamba GPU kernels, and LLM training. The core encoder and pruner live in a second repo (SLICEChat-encoder). | Smaller SLICEChat-style encoder retrained on UNI with slide labels (user decision 2026-11-01; docs/deviations.md). |
 
 ## 2. Problems inside official code
 
@@ -60,9 +60,11 @@ The planning document came from an LLM conversation. We checked every named meth
 | `git push` over HTTPS from the Mac was refused (403): the stored credentials belong to another GitHub account. | Push over SSH as the repository owner. |
 | Running code downloaded from GitHub is blocked in the development environment. | Compared our SiiMIL implementation against a hand transcription of the official algorithm instead. Key sets were identical and scores matched to 2e-8. |
 | macOS `md5sum` differs from GNU `md5sum`. | Tested the download script on Fir. |
+| **`mamba_ssm` (SLICEChat's Mamba kernel) conflicts with our Fir environment.** The wheelhouse's mamba_ssm 2.2.4 pulls torch down to 2.5.1 (our env has 2.14.1), and it fails to import with the wheelhouse's current `transformers` (it imports the removed `GreedySearchDecoderOnlyOutput`). Also, `virtualenv` failed on login2 with a broken shared cache. | A separate environment for SLICEChat runs: `python -m venv`, `pip install --no-index torch mamba_ssm causal_conv1d "transformers<4.45"` (import verified on login2, 2026-11-01). Our code falls back to a PyTorch scan where the kernel is missing. |
 
 ## 5. Bugs caught by our own tests (all fixed)
 
 - **Training was not reproducible.** The model was built before the random seed was set, so its initial weights differed between runs. `train_mil` now builds the model after seeding, and a test checks that same-seed runs match exactly.
 - **Empty-slot retention bug.** In `retained_from_assignment`, a merging slot that received no patches (an all-zero row of W) counted patch 0 as retained. That would have happened in practice at K = 256. Fixed and tested.
+- **LTS NaN gradients.** At low temperature the soft keep weights saturate to exactly 0 or 1, and the gradient of the square roots in the noise gate became inf × 0 = NaN; training silently diverged at epoch 9 on toy data. The weights are now clamped to [1e-6, 1 − 1e-6], with a test.
 - **Setup slips.** `module load` was piped into another command, so it ran in a subshell and was lost. Two expected values in tests were miscalculated by hand (the tests were wrong, not the code; confirmed by direct calculation).

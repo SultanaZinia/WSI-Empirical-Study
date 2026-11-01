@@ -41,11 +41,13 @@ def evaluate(model: nn.Module, bags) -> tuple[float, list[float]]:
 
 
 def train_mil(build_model: Callable[[], nn.Module], train_bags, val_bags, tcfg: dict, seed: int,
-              on_epoch: Callable[[nn.Module, int], None] | None = None):
+              on_epoch: Callable[[nn.Module, int], None] | None = None,
+              extra_loss: Callable[[nn.Module, int], torch.Tensor] | None = None):
     """Train with Adam + early stopping on val loss; returns (best model, history).
 
     The model is built after seeding so its initial weights are reproducible too. ``on_epoch(model, epoch)``
-    runs before each epoch (e.g. a temperature schedule).
+    runs before each epoch (e.g. a temperature schedule). ``extra_loss(model, y)`` is added to each training
+    step's loss (e.g. auxiliary heads); validation loss stays the slide cross-entropy.
     """
     torch.manual_seed(seed)
     model = build_model()
@@ -64,6 +66,8 @@ def train_mil(build_model: Callable[[], nn.Module], train_bags, val_bags, tcfg: 
             x, y = train_bags[i]
             logits, _ = model(x)
             loss = loss_fn(logits[None], torch.tensor([y]))
+            if extra_loss is not None:
+                loss = loss + extra_loss(model, y)
             opt.zero_grad()
             loss.backward()
             opt.step()
