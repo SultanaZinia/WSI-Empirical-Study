@@ -7,6 +7,7 @@ labels.
 """
 
 import copy
+import logging
 import zlib
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ from .data import Slide
 
 METHODS = ["random", "oracle", "abmil", "siimil", "nrk_abmil", "pmil", "tc_ssa", "lts", "slicechat"]
 PMIL_TOP_N = 1000  # patches per training slide clustered into prototypes (official max-mil.py --n)
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -89,7 +91,9 @@ def _pmil_parts(train, tcfg, seed, device):
         for s in train:
             prob = torch.softmax(head(s.features.to(device)), dim=1)[:, 1].cpu()
             tops.append(s.features[torch.argsort(-prob, stable=True)[:PMIL_TOP_N]].numpy())
-    return head, torch.from_numpy(affinity_prototypes(tops, seed=24))  # random_state 24 as in cluster.py
+    protos = torch.from_numpy(affinity_prototypes(tops, seed=24))  # random_state 24 as in cluster.py
+    log.info("PMIL: %d prototypes from %d training slides", len(protos), len(train))
+    return head, protos
 
 
 def fit(method: str, K: int, train: list[Slide], val: list[Slide], tcfg: dict, seed: int, device,
