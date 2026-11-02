@@ -24,8 +24,10 @@ RET_FIELDS = ["slide_id", "split", "label", "stratum", "n_patches", "n_lesions",
               "cov", "lsr", "tep"]
 
 
-def fold_split(slides: list[Slide], n_folds: int, seed: int, fold: int) -> tuple[list[Slide], list[Slide]]:
-    train = [s for s in slides if s.split == "train"]
+def fold_split(slides: list[Slide], n_folds: int, seed: int, fold: int,
+               exclude=()) -> tuple[list[Slide], list[Slide]]:
+    """(fold training slides, fold validation slides). ``exclude`` slides are in neither."""
+    train = [s for s in slides if s.split == "train" and s.slide_id not in set(exclude)]
     tr_ids, va_ids = make_folds([s.slide_id for s in train], [s.label for s in train], n_folds, seed)[fold]
     by_id = {s.slide_id: s for s in train}
     return [by_id[i] for i in tr_ids], [by_id[i] for i in va_ids]
@@ -65,7 +67,8 @@ def evaluate_run(fitted, slides: list[Slide], thresholds) -> tuple[list, list, l
 def run_method_fold(method: str, fold: int, slides: list[Slide], cfg: dict, out_root, device,
                     provenance: dict, budgets=None, log=print) -> None:
     tcfg, seed = cfg["training"], int(cfg["seed"]) + fold
-    train, val = fold_split(slides, tcfg["n_folds"], int(cfg["seed"]), fold)
+    train, val = fold_split(slides, tcfg["n_folds"], int(cfg["seed"]), fold,
+                            cfg.get("exclude_from_training", []))
     test = [s for s in slides if s.split == "test"]
     cache: dict = {}
     runs = [(method, K) for K in (budgets or cfg["budgets"])]

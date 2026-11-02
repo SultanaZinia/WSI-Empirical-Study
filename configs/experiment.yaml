@@ -22,8 +22,13 @@ budgets: [32, 64, 128, 256]
 # threshold yet: to be fixed from UNI's measured detectability (docs/metrics.md).
 lsr_overlap_thresholds: [0.0, 0.05, 0.10, 0.25, 0.50]
 
+# Training slides left out of all training, validation, normal key banks and probes: official label known to be
+# wrong (normal_144 contains tumour; Liu et al. 2017, confirmed by the organisers). User decision 2026-11-02.
+exclude_from_training: [normal_144]
+
 # Tumour slides whose annotations are not exhaustive (official CAMELYON16 README; same 20 as Liu et al. 2017).
-# Flagged in lesion-level outputs; whether to exclude them is not decided yet (docs/metrics.md).
+# Kept for training (slide labels are right); excluded from the primary lesion-level analysis, included as a
+# sensitivity analysis (user decision 2026-11-02). Flagged in every lesion-level output.
 non_exhaustive_slides: [tumor_010, tumor_015, tumor_018, tumor_020, tumor_025, tumor_029, tumor_033, tumor_034,
                         tumor_044, tumor_046, tumor_051, tumor_054, tumor_055, tumor_056, tumor_067, tumor_079,
                         tumor_085, tumor_092, tumor_095, tumor_110]

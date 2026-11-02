@@ -24,6 +24,7 @@ class Slide:
     patch_labels: np.ndarray = field(repr=False)  # evaluation only
     lesion_ids: np.ndarray = field(repr=False)  # evaluation only
     overlap: tuple = field(repr=False)  # (rows, lesion ids, fracs), evaluation only
+    lesion_diameter_um: np.ndarray = field(default_factory=lambda: np.zeros(0), repr=False)  # evaluation only
 
 
 def slide_ids(cache_root, backbone: str) -> list[str]:
@@ -37,8 +38,9 @@ def load_slide(cache_root, backbone: str, slide_id: str) -> Slide:
         labels, ids = f["patch_labels"][:], f["lesion_ids"][:]
     with h5py.File(root / "patches" / f"{slide_id}.h5") as f:
         overlap = tuple(f["overlap"][k][:] for k in ("rows", "lesion_ids", "fracs"))
+        diam = f["overlap"]["lesion_diameter_um"][:] if "lesion_diameter_um" in f["overlap"] else np.zeros(0)
     split = "test" if slide_id.startswith("test_") else "train"
     label = int(slide_id.startswith("tumor_")) if split == "train" else int(int(a["n_lesions"]) > 0)
     grid = grid_from_coords(coords, int(a["patch_size_level0"]))
     return Slide(slide_id, split, label, torch.from_numpy(feats), grid, str(a["stratum"]),
-                 int(a["n_lesions"]), labels, ids, overlap)
+                 int(a["n_lesions"]), labels, ids, overlap, diam)
