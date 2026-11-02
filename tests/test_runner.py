@@ -10,7 +10,8 @@ from lesionbench.eval.data import load_slide, slide_ids
 from lesionbench.eval.methods import METHODS
 from lesionbench.eval.runner import fold_split, run_method_fold
 
-CFG = {"seed": 0, "budgets": [4], "lsr_overlap_thresholds": [0.0, 0.1],
+CFG = {"seed": 0, "budgets": [4], "lsr_overlap_thresholds": [0.0, 0.1], "primary_overlap_threshold": 0.05,
+       "strict_overlap_threshold": 0.6,
        "training": {"n_folds": 2, "lr": 1e-3, "weight_decay": 1e-5, "max_epochs": 2, "patience": 2,
                     "stop_epoch": 2, "dropout": 0.25, "epoch_cap": 2}}
 PS = 512  # patch size at level 0
@@ -70,6 +71,20 @@ def test_load_slide_labels_split_and_grid(cache):
     assert slides["test_000"].split == "test"
     assert slides["test_000"].label == 1 and slides["test_001"].label == 0
     assert slides["tumor_000"].grid[7].tolist() == [1, 1] and slides["tumor_000"].features.shape == (30, 8)
+
+
+def test_labels_follow_the_overlap_threshold(cache):
+    # fixture lesion patches overlap their lesion by 0.5
+    assert load_slide(cache, "uni", "tumor_000", label_threshold=0.05).patch_labels.sum() == 4
+    assert load_slide(cache, "uni", "tumor_000", label_threshold=0.6).patch_labels.sum() == 0
+
+
+def test_retention_uses_primary_and_strict_thresholds(cache, tmp_path):
+    slides = [load_slide(cache, "uni", s, label_threshold=0.05) for s in slide_ids(cache, "uni")]
+    run_method_fold("oracle", 0, slides, CFG, tmp_path, "cpu", {}, log=lambda m: None)
+    rows = [r for r in _rows(tmp_path / "oracle" / "fold0" / "K4" / "retention.csv") if r["label"] == "1"]
+    assert rows and all(float(r["cov"]) == 1.0 and float(r["lsr"]) == 1.0 for r in rows)  # Oracle keeps all 4
+    assert all(r["cov_strict"] == "nan" and float(r["tep_strict"]) == 0.0 for r in rows)  # none >= 0.6
 
 
 def test_fold_split_is_disjoint_and_excludes_test(cache):

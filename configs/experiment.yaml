@@ -18,9 +18,13 @@ backbones:
 
 budgets: [32, 64, 128, 256]
 
-# LSR is reported at every hit threshold (patch overlap with the lesion; 0 = any overlap). No single primary
-# threshold yet: to be fixed from UNI's measured detectability (docs/metrics.md).
+# LSR is reported at every hit threshold (patch overlap with the lesion; 0 = any overlap).
 lsr_overlap_thresholds: [0.0, 0.05, 0.10, 0.25, 0.50]
+# One rule throughout (patch tumour label, lesion hit, Oracle, Cov, TEP), fixed 2026-11-02 from UNI's measured
+# detectability by the rule committed before the data (b2c56d8): lowest overlap band with >= 50% of tumour
+# patches detected at 95% specificity (5-10%: 68%). Strict sensitivity: >= 80% detected (10-25%: 83%).
+primary_overlap_threshold: 0.05
+strict_overlap_threshold: 0.10
 
 # Training slides left out of all training, validation, normal key banks and probes: official label known to be
 # wrong (normal_144 contains tumour; Liu et al. 2017, confirmed by the organisers). User decision 2026-11-02.

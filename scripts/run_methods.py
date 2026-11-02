@@ -45,7 +45,8 @@ def main():
     sha = subprocess.run(git, capture_output=True, text=True).stdout.strip()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     cache = cfg["paths"]["cache_root"]
-    slides = [load_slide(cache, args.backbone, sid) for sid in slide_ids(cache, args.backbone)]
+    t = cfg["primary_overlap_threshold"]
+    slides = [load_slide(cache, args.backbone, s, label_threshold=t) for s in slide_ids(cache, args.backbone)]
     log(f"{args.method} fold {args.fold}: {len(slides)} slides, {args.backbone}, {device}, git {sha}")
     provenance = {"git_sha": sha, "backbone": args.backbone, "device": device, "epoch_cap": args.epoch_cap,
                   "training": cfg["training"], "budgets": args.budgets or cfg["budgets"]}

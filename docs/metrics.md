@@ -27,8 +27,14 @@ lesions that passed the earlier one.
   - **When UNI features exist:** measure the tumour fraction at which the probe reliably detects tumour on
     training-fold slides, and fix the primary threshold there, **before** looking at any selector result. Then the
     same threshold defines y_i, H_ℓ, the probe's labels and TSS (one rule throughout).
-  - Until then, `patch_labels` / `lesion_ids` stay at 10% (Cov, TEP, Oracle-Cov use them), as a placeholder.
-- **H_ℓ** = tumour patches of lesion ℓ (overlap ≥ 0.10); n_ℓ = |H_ℓ|. Lesions with n_ℓ = 0 cannot be hit by any arm;
+  - **Fixed 2026-11-02: primary threshold t\* = 0.05; strict sensitivity 0.10.** Rule committed before the data
+    (git b2c56d8): lowest overlap band with ≥ 50% of tumour patches detected by the fold probe at 95% specificity on
+    held-out normal-slide patches (validation folds only); strict = ≥ 80%. UNI (5 folds, mean, range):
+    0–5% 43% (37–49), **5–10% 68% (60–74)**, **10–25% 83% (77–87)**, 25–50% 91%, ≥ 50% 98%.
+    `primary_overlap_threshold` / `strict_overlap_threshold` in configs/experiment.yaml; the runner derives patch
+    labels (Cov, TEP, Oracle) and LSR at t\* from the stored overlaps, and reports *_strict at 0.10. The probe's
+    training labels stay at ≥ 0.5 vs normal slides by design (they must not depend on the threshold being chosen).
+- **H_ℓ** = tumour patches of lesion ℓ (overlap ≥ t\*); n_ℓ = |H_ℓ|. Lesions with n_ℓ = 0 cannot be hit by any arm;
   they stay in every LSR denominator, are counted, and are reported as a separate "unhittable" group.
 - **Lesion** = connected component of (Tumor − Exclusion) after merging parts closer than 75 µm, as in the official
   CAMELYON16 evaluation. **Size** = max Feret diameter d_ℓ of the undilated lesion.

@@ -14,14 +14,15 @@ from pathlib import Path
 
 import numpy as np
 
-from ..metrics.retention import cov_at_k, lsr_at_k, lsr_curve, tep_at_k
+from ..metrics.probe import max_overlap
+from ..metrics.retention import cov_at_k, lsr_curve, tep_at_k
 from ..splits import make_folds
 from .data import Slide
 from .methods import fit
 
 PRED_FIELDS = ["slide_id", "split", "label", "prob"]
 RET_FIELDS = ["slide_id", "split", "label", "stratum", "n_patches", "n_lesions", "n_kept",
-              "cov", "lsr", "tep"]
+              "cov", "lsr", "tep", "cov_strict", "tep_strict"]
 
 
 def fold_split(slides: list[Slide], n_folds: int, seed: int, fold: int,
@@ -40,8 +41,12 @@ def _write_csv(path, fields, rows):
         w.writerows(rows)
 
 
-def evaluate_run(fitted, slides: list[Slide], thresholds) -> tuple[list, list, list, dict]:
-    """(prediction rows, retention rows, LSR column names, arrays for retained.npz) over ``slides``."""
+def evaluate_run(fitted, slides: list[Slide], thresholds, primary: float, strict: float
+                 ) -> tuple[list, list, list, dict]:
+    """(prediction rows, retention rows, LSR column names, arrays for retained.npz) over ``slides``.
+
+    cov / lsr / tep use the primary overlap threshold (``s.patch_labels`` must be labelled at it); the
+    *_strict columns and lsr_tXX give the other thresholds."""
     lsr_cols = {t: f"lsr_t{round(100 * t):02d}" for t in thresholds}
     preds, rets, arrays = [], [], {}
     for s in slides:
@@ -49,11 +54,13 @@ def evaluate_run(fitted, slides: list[Slide], thresholds) -> tuple[list, list, l
         idx = r.retained_idx.numpy()
         split = "test" if s.split == "test" else "val"
         preds.append({"slide_id": s.slide_id, "split": split, "label": s.label, "prob": fitted.prob(s, r)})
-        curve = lsr_curve(idx, *s.overlap, s.n_lesions, thresholds)
+        curve = lsr_curve(idx, *s.overlap, s.n_lesions, sorted({*thresholds, primary}))
+        y_strict = max_overlap(len(s.features), s.overlap[0], s.overlap[2]) >= strict
         rets.append({"slide_id": s.slide_id, "split": split, "label": s.label, "stratum": s.stratum,
                      "n_patches": len(s.features), "n_lesions": s.n_lesions, "n_kept": len(idx),
-                     "cov": cov_at_k(idx, s.patch_labels), "lsr": lsr_at_k(idx, s.lesion_ids, s.n_lesions),
-                     "tep": tep_at_k(idx, s.patch_labels), **{lsr_cols[t]: v for t, v in curve.items()}})
+                     "cov": cov_at_k(idx, s.patch_labels), "lsr": curve[primary],
+                     "tep": tep_at_k(idx, s.patch_labels), "cov_strict": cov_at_k(idx, y_strict),
+                     "tep_strict": tep_at_k(idx, y_strict), **{lsr_cols[t]: curve[t] for t in thresholds}})
         arrays[f"retained/{s.slide_id}"] = idx.astype(np.int64)
         if r.layer_of_drop is not None:
             arrays[f"layer_of_drop/{s.slide_id}"] = r.layer_of_drop.numpy().astype(np.int16)
@@ -83,7 +90,9 @@ def run_method_fold(method: str, fold: int, slides: list[Slide], cfg: dict, out_
         t0 = time.time()
         fitted = fit(name, 0 if K == "full" else K, train, val, tcfg, seed, device, cache)
         t_fit = time.time() - t0
-        preds, rets, lsr_fields, arrays = evaluate_run(fitted, val + test, cfg["lsr_overlap_thresholds"])
+        preds, rets, lsr_fields, arrays = evaluate_run(fitted, val + test, cfg["lsr_overlap_thresholds"],
+                                                       cfg["primary_overlap_threshold"],
+                                                       cfg["strict_overlap_threshold"])
         _write_csv(out / "predictions.csv", PRED_FIELDS, preds)
         _write_csv(out / "retention.csv", RET_FIELDS + lsr_fields, rets)
         np.savez_compressed(out / "retained.npz", **arrays)
