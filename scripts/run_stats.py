@@ -123,9 +123,9 @@ def main():
                 "paired bootstrap" if cmp else "")
         # per-slide retention within slide strata
         for s in STRATA:
-            cols = np.array([i for i, st in enumerate(stratum) if st == s])
+            cols = np.array([i for i, st in enumerate(stratum) if st == s], dtype=int)
             W = resample_weights(len(cols), B, seed)
-            for c in ("cov", "lsr", "tep"):
+            for c in ("cov", "lsr", "tep") if len(cols) else ():  # no ITC slides in the test set
                 vals = {m: ret[(m, K)][c][cols] for m in methods}
                 boots = {m: slide_mean(vals[m], W) for m in methods}
                 for m in methods:
