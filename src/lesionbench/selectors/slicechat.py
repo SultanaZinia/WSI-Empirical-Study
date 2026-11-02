@@ -66,7 +66,7 @@ def remove_window(scores: Tensor, grid: Tensor, n_keep: int) -> Tensor:
     the lowest total score (ties: the earliest window)."""
     S = len(scores) - n_keep
     if S <= 0:
-        return torch.arange(len(scores))
+        return torch.arange(len(scores), device=scores.device)
     perm = torch.argsort(hilbert_index(grid), stable=True)
     cs = torch.cat([scores.new_zeros(1), torch.cumsum(scores[perm].float(), dim=0)])
     j = int(torch.argmin(cs[S:] - cs[:-S]))
@@ -125,7 +125,7 @@ class SLICEChatMIL(nn.Module):
         order = raster_order(grid)
         rows, grid = order, grid[order]
         h = self.proj(features[order])
-        drop = torch.full((len(features),), -1, dtype=torch.long)
+        drop = torch.full((len(features),), -1, dtype=torch.long, device=features.device)
         schedule = keep_schedule(len(features), self.K, len(self.pruners))
         self.aux_logits = []
         m = t = 0
@@ -143,7 +143,7 @@ class SLICEChatMIL(nn.Module):
             if self.training:
                 self.aux_logits.append(self.aux_head(pooled))
             keep = remove_window(scores.detach(), grid, schedule[b])
-            dropped = torch.ones(len(rows), dtype=torch.bool)
+            dropped = torch.ones(len(rows), dtype=torch.bool, device=rows.device)
             dropped[keep] = False
             drop[rows[dropped]] = b
             h, rows, grid = h[keep], rows[keep], grid[keep]
@@ -159,8 +159,9 @@ class SLICEChatMIL(nn.Module):
 
 def aux_loss(model: SLICEChatMIL, y: int) -> Tensor:
     """Sum of the pruners' auxiliary cross-entropies for the last training forward (weight 1, as in code)."""
-    target = torch.tensor([y])
-    return sum((F.cross_entropy(lg[None], target) for lg in model.aux_logits), torch.zeros(()))
+    device = model.aux_head.weight.device
+    target = torch.tensor([y], device=device)
+    return sum((F.cross_entropy(lg[None], target) for lg in model.aux_logits), torch.zeros((), device=device))
 
 
 class SLICEChatSelector:

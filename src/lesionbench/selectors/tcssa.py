@@ -63,11 +63,11 @@ class TCSSA(nn.Module):
 
 
 def train_tcssa(build_model, train_bags, val_bags, seed: int, max_epochs: int = 50, aux_weight: float = 0.01,
-                accum: int = 8, patience: int = 15):
+                accum: int = 8, patience: int = 15, device="cpu"):
     """tools/train.py defaults: AdamW 1e-4, wd 1e-5, gradient accumulation over 8 slides, LR x0.5 on a val-AUC
     plateau (patience 5, min 1e-6), early stopping on val AUC; returns the best-val-AUC model."""
     torch.manual_seed(seed)
-    model = build_model()
+    model = build_model().to(device)
     g = torch.Generator().manual_seed(seed)
     opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
     sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="max", factor=0.5, patience=5, min_lr=1e-6)
@@ -79,14 +79,14 @@ def train_tcssa(build_model, train_bags, val_bags, seed: int, max_epochs: int = 
         order = torch.randperm(len(train_bags), generator=g).tolist()
         for step, i in enumerate(order, 1):
             x, y = train_bags[i]
-            logits, aux, _ = model(x)
-            ((ce(logits[None], torch.tensor([y])) + aux_weight * aux) / accum).backward()
+            logits, aux, _ = model(x.to(device))
+            ((ce(logits[None], torch.tensor([y], device=device)) + aux_weight * aux) / accum).backward()
             if step % accum == 0 or step == len(order):
                 opt.step()
                 opt.zero_grad()
         model.eval()
         with torch.no_grad():
-            probs = [torch.softmax(model(x)[0], dim=0)[1].item() for x, _ in val_bags]
+            probs = [torch.softmax(model(x.to(device))[0], dim=0)[1].item() for x, _ in val_bags]
         auc = roc_auc_score([y for _, y in val_bags], probs)
         sched.step(auc)
         history.append({"epoch": epoch, "val_auc": auc})
@@ -113,5 +113,5 @@ class TCSSASelector:
             raise ValueError(f"model has {self.model.n_slots} slots, asked for K = {K}")
         self.model.eval()
         _, _, W = self.model(features)
-        kept = retained_from_assignment(W.numpy(), self.rule, self.threshold)
+        kept = retained_from_assignment(W.cpu().numpy(), self.rule, self.threshold)
         return SelectionResult(retained_idx=torch.as_tensor(kept, dtype=torch.long), W=W)

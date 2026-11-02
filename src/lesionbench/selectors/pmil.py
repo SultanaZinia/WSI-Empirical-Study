@@ -32,18 +32,19 @@ def _recipe_optimizer(params, epochs_milestones=(10, 20)):
     return opt, torch.optim.lr_scheduler.MultiStepLR(opt, milestones=list(epochs_milestones), gamma=0.1)
 
 
-def maxmil_pretrain(bags, in_dim: int, seed: int, epochs: int = 30, batch_size: int = 128) -> nn.Linear:
+def maxmil_pretrain(bags, in_dim: int, seed: int, epochs: int = 30, batch_size: int = 128,
+                    device="cpu") -> nn.Linear:
     """Instance head (D -> 2) trained by max-MIL on (features, slide label) bags."""
     torch.manual_seed(seed)
     g = torch.Generator().manual_seed(seed)
-    head = nn.Linear(in_dim, 2)
+    head = nn.Linear(in_dim, 2).to(device)
     opt, sched = _recipe_optimizer(head.parameters())
     loss_fn = nn.CrossEntropyLoss()
     for _ in range(epochs):
         with torch.no_grad():
-            top = [x[torch.softmax(head(x), dim=1)[:, 1].argmax()] for x, _ in bags]
-        X, y = torch.stack(top), torch.tensor([lab for _, lab in bags])
-        for idx in torch.randperm(len(X), generator=g).split(batch_size):
+            top = [x[torch.softmax(head(x.to(device)), dim=1)[:, 1].argmax().cpu()] for x, _ in bags]
+        X, y = torch.stack(top).to(device), torch.tensor([lab for _, lab in bags], device=device)
+        for idx in torch.randperm(len(X), generator=g).to(device).split(batch_size):
             loss = loss_fn(head(X[idx]), y[idx])
             opt.zero_grad()
             loss.backward()
@@ -105,15 +106,15 @@ class PMIL(nn.Module):
 
 def _pmil_loss(model, x, y, loss_fn):
     ins, bag, _, _ = model(x)
-    target = torch.tensor([y])
+    target = torch.tensor([y], device=bag.device)
     max_row = torch.softmax(ins, dim=1)[:, 1].argmax()
     return loss_fn(bag[None], target) + loss_fn(ins[max_row][None], target), bag
 
 
-def train_pmil(build_model, train_bags, val_bags, seed: int, epochs: int = 30):
+def train_pmil(build_model, train_bags, val_bags, seed: int, epochs: int = 30, device="cpu"):
     """Official recipe: Adam 1e-4, wd 1e-4, x0.1 at epochs 10 and 20; keep the best val-loss state."""
     torch.manual_seed(seed)
-    model = build_model()
+    model = build_model().to(device)
     g = torch.Generator().manual_seed(seed)
     opt, sched = _recipe_optimizer(model.parameters())
     loss_fn = nn.CrossEntropyLoss()
@@ -121,14 +122,16 @@ def train_pmil(build_model, train_bags, val_bags, seed: int, epochs: int = 30):
     for epoch in range(epochs):
         model.train()
         for i in torch.randperm(len(train_bags), generator=g).tolist():
-            loss, _ = _pmil_loss(model, *train_bags[i], loss_fn)
+            x, y = train_bags[i]
+            loss, _ = _pmil_loss(model, x.to(device), y, loss_fn)
             opt.zero_grad()
             loss.backward()
             opt.step()
         sched.step()
         model.eval()
         with torch.no_grad():
-            val = sum(_pmil_loss(model, x, y, loss_fn)[0].item() for x, y in val_bags) / max(len(val_bags), 1)
+            val = sum(_pmil_loss(model, x.to(device), y, loss_fn)[0].item()
+                      for x, y in val_bags) / max(len(val_bags), 1)
         history.append({"epoch": epoch, "val_loss": val})
         if val < best:
             best, best_state = val, copy.deepcopy(model.state_dict())
