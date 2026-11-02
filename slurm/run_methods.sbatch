@@ -25,5 +25,8 @@ export HF_HUB_OFFLINE=1
 
 echo "job=$SLURM_JOB_ID fold=$SLURM_ARRAY_TASK_ID host=$(hostname) sha=$(git rev-parse --short HEAD) method=$METHOD"
 
+# Fail fast on a node whose GPU is not usable (fc10512 fell back to CPU on 2026-11-02); resubmit with --exclude.
+python -c "import sys, torch; sys.exit(0 if torch.cuda.is_available() else 'no usable GPU on $(hostname)')"
+
 python scripts/run_methods.py --config "$CONFIG" --backbone "$BACKBONE" --method "$METHOD" \
     --fold "$SLURM_ARRAY_TASK_ID" "$@"
