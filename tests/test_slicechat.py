@@ -108,6 +108,30 @@ def test_encode_retains_k_and_records_layer_of_drop():
     torch.testing.assert_close(m((x, grid))[0], m((x, grid))[0])
 
 
+def test_retained_rows_index_the_input_order():
+    """Shuffling the cached rows must retain the same patches: indices map back through every re-sort."""
+    torch.manual_seed(0)
+    m = SLICEChatMIL(in_dim=8, K=4, dim=16, n_blocks=4, n_heads=2).eval()
+    x, grid = _slide()
+    perm = torch.randperm(len(x), generator=torch.Generator().manual_seed(1))
+    _, rows, drop = m.encode(x, grid)
+    _, rows_p, drop_p = m.encode(x[perm], grid[perm])
+    assert sorted(perm[rows_p].tolist()) == sorted(rows.tolist())
+    assert torch.equal(drop_p, drop[perm])
+
+
+def test_survivors_form_at_most_one_hilbert_segment_per_pruner_plus_one():
+    """Each pruner cuts one contiguous Hilbert window, so K survivors lie in <= n_pruners + 1 segments."""
+    torch.manual_seed(0)
+    grid = torch.tensor([[gx, gy] for gy in range(16) for gx in range(16)])
+    x = torch.randn(len(grid), 8)
+    m = SLICEChatMIL(in_dim=8, K=8, dim=16, n_blocks=6, n_heads=2).eval()
+    _, rows, _ = m.encode(x, grid)
+    pos = torch.argsort(torch.argsort(hilbert_index(grid), stable=True))[rows].sort().values
+    segments = 1 + int((pos.diff() > 1).sum())
+    assert len(rows) == 8 and segments <= len(m.pruners) + 1
+
+
 def test_aux_loss_trains_pruners_not_encoder():
     torch.manual_seed(0)
     m = SLICEChatMIL(in_dim=8, K=4, dim=16, n_blocks=3, n_heads=2).train()
