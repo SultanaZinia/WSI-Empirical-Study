@@ -71,13 +71,13 @@ def _fixed_selection(select_fn, train, val, tcfg, seed, device) -> Fitted:
 
 def _bank(kind: str, train: list[Slide], seed: int, device) -> torch.Tensor:
     """Normal key bank from the fold's training normal slides only (concatenated per-slide key sets).
-    Built on CPU, then moved to ``device``."""
+    SiiMIL's CUR keys are built on CPU; NRK's de-duplication runs on ``device``."""
     normals = [s for s in train if s.label == 0]
     if kind == "siimil":
         keys = [cur_keys(s.features) for s in normals]
     else:
-        keys = [dfi_keys(s.features, 0.95, seed=slide_seed(s, seed)) for s in normals]
-    return torch.cat(keys).to(device)
+        keys = [dfi_keys(s.features.to(device), 0.95, seed=slide_seed(s, seed)) for s in normals]
+    return torch.cat([k.to(device) for k in keys])
 
 
 def _pmil_parts(train, tcfg, seed, device):

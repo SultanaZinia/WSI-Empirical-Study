@@ -27,6 +27,29 @@ def test_dfi_keys_drops_near_duplicates():
     assert torch.equal(dfi_keys(X, seed=3), dfi_keys(X, seed=3))
 
 
+def _dfi_reference(features, threshold, seed):
+    """The original implementation (filters a copy of the remaining rows every step)."""
+    g = torch.Generator().manual_seed(seed)
+    X = torch.nn.functional.normalize(features.double(), dim=1)
+    remaining, keys = torch.arange(len(features)), []
+    while len(remaining):
+        pick = remaining[torch.randint(len(remaining), (1,), generator=g)].item()
+        keys.append(pick)
+        sim = X[remaining] @ X[pick]
+        remaining = remaining[(sim <= threshold) & (remaining != pick)]
+    return features[torch.tensor(keys)]
+
+
+def test_dfi_keys_matches_original_implementation():
+    g = torch.Generator().manual_seed(0)
+    base = torch.randn(20, 8, generator=g)
+    near = base[torch.randint(20, (180,), generator=g)] + 0.05 * torch.randn(180, 8, generator=g)
+    X = torch.cat([base, near])
+    for thr in (0.95, 0.99, 0.5):
+        for seed in range(3):
+            assert torch.equal(dfi_keys(X, thr, seed), _dfi_reference(X, thr, seed))
+
+
 def test_mean_topk_similarity_hand_computed():
     keys = torch.tensor([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])  # cos to (1, 0): 1, 0, 0.7071
     q = torch.tensor([[2.0, 0.0]])

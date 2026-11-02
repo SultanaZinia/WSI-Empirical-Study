@@ -31,23 +31,36 @@ def cur_keys(features: Tensor, t: int = 100) -> Tensor:
 
 def dfi_keys(features: Tensor, threshold: float = 0.95, seed: int = 0) -> Tensor:
     """NRK key set of one normal slide: repeatedly take a random remaining patch as a key and discard every
-    remaining patch with cosine similarity > ``threshold`` to it."""
+    remaining patch with cosine similarity > ``threshold`` to it.
+
+    Runs on ``features.device``. A mask of remaining patches avoids copying them every step; the random
+    draws come from a CPU generator over the remaining patches in row order, so keys do not depend on the
+    device.
+    """
     g = torch.Generator().manual_seed(seed)
     X = torch.nn.functional.normalize(features.double(), dim=1)
-    remaining = torch.arange(len(features))
-    keys = []
-    while len(remaining):
-        pick = remaining[torch.randint(len(remaining), (1,), generator=g)].item()
+    alive = torch.ones(len(features), dtype=torch.bool, device=features.device)
+    keys, n = [], len(features)
+    while n:
+        r = int(torch.randint(n, (1,), generator=g))
+        pick = int(torch.nonzero(alive).flatten()[r])
         keys.append(pick)
-        sim = X[remaining] @ X[pick]
-        remaining = remaining[(sim <= threshold) & (remaining != pick)]
-    return features[torch.tensor(keys)]
+        alive &= (X @ X[pick]) <= threshold
+        alive[pick] = False
+        n = int(alive.sum())
+    return features[torch.tensor(keys, device=features.device)]
 
 
-def mean_topk_similarity(features: Tensor, keys: Tensor, k: int, chunk: int = 4096) -> Tensor:
-    """Per patch: mean of its ``k`` highest cosine similarities to the keys (all keys if k > #keys)."""
+def mean_topk_similarity(features: Tensor, keys: Tensor, k: int, chunk: int | None = None,
+                         max_entries: int = 2**31) -> Tensor:
+    """Per patch: mean of its ``k`` highest cosine similarities to the keys (all keys if k > #keys).
+
+    Patches are scored ``chunk`` at a time; by default the chunk keeps each (chunk x #keys) similarity table
+    under ``max_entries`` (NRK banks on UNI hold ~10^6 keys). The result does not depend on the chunk.
+    """
     Kn = torch.nn.functional.normalize(keys.float(), dim=1)
     k = min(k, len(keys))
+    chunk = chunk or max(1, min(4096, max_entries // max(len(keys), 1)))
     out = []
     for i in range(0, len(features), chunk):
         Q = torch.nn.functional.normalize(features[i : i + chunk].float(), dim=1)
