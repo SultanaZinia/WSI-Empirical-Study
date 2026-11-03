@@ -35,6 +35,7 @@ class Fitted:
     select: Callable[[Slide], SelectionResult]
     prob: Callable[[Slide, SelectionResult], float]  # P(tumour) from the kept patches only
     history: list
+    model: torch.nn.Module  # what prob() runs (the K-patch ABMIL head for fixed selectors)
 
 
 def slide_seed(slide: Slide, seed: int) -> int:
@@ -68,7 +69,7 @@ def _fixed_selection(select_fn, train, val, tcfg, seed, device) -> Fitted:
     def prob(s, sel):
         return _p(model(s.features[sel.retained_idx].to(device))[0])
 
-    return Fitted(select_fn, prob, hist)
+    return Fitted(select_fn, prob, hist, model)
 
 
 def _bank(kind: str, train: list[Slide], seed: int, device) -> torch.Tensor:
@@ -135,7 +136,7 @@ def fit(method: str, K: int, train: list[Slide], val: list[Slide], tcfg: dict, s
         def prob(s, r):
             return _p(model(s.features[r.retained_idx].to(device))[0])
 
-        return Fitted(select, prob, hist)
+        return Fitted(select, prob, hist, model)
     if method == "pmil":
         if "pmil" not in cache:
             cache["pmil"] = _pmil_parts(train, tcfg, seed, device)
@@ -153,7 +154,7 @@ def fit(method: str, K: int, train: list[Slide], val: list[Slide], tcfg: dict, s
         def prob(s, r):  # PMIL's bag head codes exactly these top-K patches
             return _p(model(s.features.to(device))[1])
 
-        return Fitted(select, prob, hist)
+        return Fitted(select, prob, hist, model)
     if method == "tc_ssa":
         model, hist = train_tcssa(lambda: TCSSA(in_dim, n_slots=K), [(s.features, s.label) for s in train],
                                   [(s.features, s.label) for s in val], seed, max_epochs=_cap(50, tcfg),
@@ -168,7 +169,7 @@ def fit(method: str, K: int, train: list[Slide], val: list[Slide], tcfg: dict, s
         def prob(s, r):  # classified from the K slots
             return _p(model(s.features.to(device))[0])
 
-        return Fitted(select, prob, hist)
+        return Fitted(select, prob, hist, model)
     if method == "lts":
         tc = {**tcfg, "max_epochs": _cap(tcfg["max_epochs"], tcfg)}
 
@@ -188,7 +189,7 @@ def fit(method: str, K: int, train: list[Slide], val: list[Slide], tcfg: dict, s
         def prob(s, r):  # eval forward keeps the same hard top-K
             return _p(model(s.features.to(device))[0])
 
-        return Fitted(select, prob, hist)
+        return Fitted(select, prob, hist, model)
     if method == "slicechat":
         tc = {**tcfg, "max_epochs": _cap(tcfg["max_epochs"], tcfg)}
         model, hist = train_mil(lambda: SLICEChatMIL(in_dim, K, dropout=tcfg["dropout"]),
@@ -199,13 +200,14 @@ def fit(method: str, K: int, train: list[Slide], val: list[Slide], tcfg: dict, s
 
         def select(s):
             r = SLICEChatSelector(model).select(s.features.to(device), K, grid=s.grid.to(device))
-            return SelectionResult(retained_idx=r.retained_idx.cpu(), layer_of_drop=r.layer_of_drop.cpu())
+            return SelectionResult(retained_idx=r.retained_idx.cpu(), layer_of_drop=r.layer_of_drop.cpu(),
+                                   stage_scores=r.stage_scores.cpu())
 
         @torch.no_grad()
         def prob(s, r):
             return _p(model((s.features.to(device), s.grid.to(device)))[0])
 
-        return Fitted(select, prob, hist)
+        return Fitted(select, prob, hist, model)
     raise ValueError(f"unknown method {method!r}")
 
 

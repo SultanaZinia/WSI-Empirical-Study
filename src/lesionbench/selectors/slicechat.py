@@ -121,11 +121,13 @@ class SLICEChatMIL(nn.Module):
         self.aux_logits: list[Tensor] = []
 
     def encode(self, features: Tensor, grid: Tensor, use_kernel=None):
-        """Returns (final tokens (K', dim), their original rows (K',), layer_of_drop (N,))."""
+        """Returns (final tokens (K', dim), their original rows (K',), layer_of_drop (N,), stage_scores
+        (n_pruners, N): pruner b's pre-softmax score per patch, NaN for patches removed before pruner b)."""
         order = raster_order(grid)
         rows, grid = order, grid[order]
         h = self.proj(features[order])
         drop = torch.full((len(features),), -1, dtype=torch.long, device=features.device)
+        stage_scores = torch.full((len(self.pruners), len(features)), float("nan"), device=features.device)
         schedule = keep_schedule(len(features), self.K, len(self.pruners))
         self.aux_logits = []
         m = t = 0
@@ -140,6 +142,7 @@ class SLICEChatMIL(nn.Module):
             if b == len(self.pruners):
                 break
             scores, pooled = self.pruners[b](h.detach() if self.training else h)
+            stage_scores[b, rows] = scores.detach().float()
             if self.training:
                 self.aux_logits.append(self.aux_head(pooled))
             keep = remove_window(scores.detach(), grid, schedule[b])
@@ -149,11 +152,11 @@ class SLICEChatMIL(nn.Module):
             h, rows, grid = h[keep], rows[keep], grid[keep]
             order = raster_order(grid)  # retained tokens continue in raster order
             h, rows, grid = h[order], rows[order], grid[order]
-        return self.norm_f(h), rows, drop
+        return self.norm_f(h), rows, drop, stage_scores
 
     def forward(self, inp: tuple[Tensor, Tensor]) -> tuple[Tensor, Tensor]:
         features, grid = inp
-        h, _, drop = self.encode(features, grid)
+        h, _, drop, _ = self.encode(features, grid)
         return self.head(h)[0], drop
 
 
@@ -175,5 +178,5 @@ class SLICEChatSelector:
         if K != self.model.K:
             raise ValueError(f"model was trained for K = {self.model.K}, asked for K = {K}")
         self.model.eval()
-        _, rows, drop = self.model.encode(features, grid)
-        return SelectionResult(retained_idx=rows, layer_of_drop=drop)
+        _, rows, drop, stage_scores = self.model.encode(features, grid)
+        return SelectionResult(retained_idx=rows, layer_of_drop=drop, stage_scores=stage_scores)

@@ -13,6 +13,7 @@ class SelectionResult:
     scores: Tensor | None = None  # (N,) per-patch selection score
     W: Tensor | None = None  # (K, N) soft assignment, merging methods only
     layer_of_drop: Tensor | None = None  # (N,) layer at which each token was pruned, in-encoder pruners only
+    stage_scores: Tensor | None = None  # (L, N) pruner scores per stage, NaN once dropped; in-encoder pruners
 
 
 class Selector(Protocol):

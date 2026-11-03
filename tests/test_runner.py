@@ -117,6 +117,10 @@ def test_every_method_runs_end_to_end(method, cache, tmp_path, monkeypatch):
     assert len([k for k in arrays.files if k.startswith("retained/")]) == 10
     if method == "slicechat":
         assert "layer_of_drop/test_000" in arrays.files
+        assert arrays["stage_scores/test_000"].shape[1] == 30
+    if method in ("abmil", "siimil", "nrk_abmil", "pmil", "lts"):
+        assert arrays["scores/test_000"].shape == (30,) and arrays["scores/test_000"].dtype == np.float16
+    assert (out / "model.pt").exists()
     if method == "tc_ssa":
         assert "W/test_000" in arrays.files
     if method == "abmil":

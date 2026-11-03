@@ -98,8 +98,10 @@ def test_encode_retains_k_and_records_layer_of_drop():
     torch.manual_seed(0)
     m = SLICEChatMIL(in_dim=8, K=4, dim=16, n_blocks=4, n_heads=2).eval()
     x, grid = _slide()
-    h, rows, drop = m.encode(x, grid)
+    h, rows, drop, stage_scores = m.encode(x, grid)
     assert h.shape == (4, 16) and len(set(rows.tolist())) == 4
+    present = (drop[None] == -1) | (drop[None] >= torch.arange(3)[:, None])  # patch reached pruner b
+    assert stage_scores.shape == (3, 36) and torch.equal(~stage_scores.isnan(), present)
     assert (drop[rows] == -1).all() and (drop == -1).sum() == 4
     sched = keep_schedule(36, 4, 3)
     removed = [36 - sched[0]] + [a - b for a, b in zip(sched, sched[1:], strict=False)]
@@ -114,8 +116,8 @@ def test_retained_rows_index_the_input_order():
     m = SLICEChatMIL(in_dim=8, K=4, dim=16, n_blocks=4, n_heads=2).eval()
     x, grid = _slide()
     perm = torch.randperm(len(x), generator=torch.Generator().manual_seed(1))
-    _, rows, drop = m.encode(x, grid)
-    _, rows_p, drop_p = m.encode(x[perm], grid[perm])
+    _, rows, drop, _ = m.encode(x, grid)
+    _, rows_p, drop_p, _ = m.encode(x[perm], grid[perm])
     assert sorted(perm[rows_p].tolist()) == sorted(rows.tolist())
     assert torch.equal(drop_p, drop[perm])
 
@@ -126,7 +128,7 @@ def test_survivors_form_at_most_one_hilbert_segment_per_pruner_plus_one():
     grid = torch.tensor([[gx, gy] for gy in range(16) for gx in range(16)])
     x = torch.randn(len(grid), 8)
     m = SLICEChatMIL(in_dim=8, K=8, dim=16, n_blocks=6, n_heads=2).eval()
-    _, rows, _ = m.encode(x, grid)
+    _, rows, _, _ = m.encode(x, grid)
     pos = torch.argsort(torch.argsort(hilbert_index(grid), stable=True))[rows].sort().values
     segments = 1 + int((pos.diff() > 1).sum())
     assert len(rows) == 8 and segments <= len(m.pruners) + 1
