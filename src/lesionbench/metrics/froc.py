@@ -8,7 +8,7 @@ thresholds = every distinct probability except 0.0; score = mean sensitivity at 
 8 FP per slide by a step lookup. Only mask reading differs (the caller passes the level array and its
 spacing; the official code reads them with ASAP). Probabilities must be > 0: a missed region is 0.0.
 
-``detections_from_kept`` is ours (docs/deviations.md): kept patches that touch form one detection.
+``detections_from_kept`` is ours (docs/deviations.md): local maxima of the kept patches.
 """
 
 import bisect
@@ -78,19 +78,25 @@ def froc_score(average_fps, sensitivities) -> float:
 
 
 def detections_from_kept(kept, coords, patch_size_l0: int, probs) -> list[tuple[float, int, int]]:
-    """Kept patches that touch (8-neighbourhood on the patch grid) form one detection: (highest probability,
-    level-0 centre x, y of that patch). ``kept`` indexes ``coords`` (N, 2) and ``probs`` (N,)."""
+    """Local maxima of the kept patches: a kept patch is a detection (probability, level-0 centre x, y) if its
+    probability beats every kept 8-neighbour on the patch grid; ties go to the lower row. Isolated kept
+    patches are their own detections; keeping every patch gives the heatmap's peaks. ``kept`` indexes
+    ``coords`` (N, 2) and ``probs`` (N,)."""
     kept = np.asarray(kept, dtype=np.int64)
     if len(kept) == 0:
         return []
-    cells = (np.asarray(coords)[kept] - np.asarray(coords).min(axis=0)) // patch_size_l0
-    grid = np.zeros(cells.max(axis=0)[::-1] + 1, dtype=bool)
-    grid[cells[:, 1], cells[:, 0]] = True
-    comp = scipy.ndimage.label(grid, structure=np.ones((3, 3)))[0][cells[:, 1], cells[:, 0]]
+    coords = np.asarray(coords)
+    cx, cy = ((coords[kept] - coords.min(axis=0)) // patch_size_l0).T
     p = np.asarray(probs, dtype=np.float64)[kept]
-    out = []
-    for c in np.unique(comp):
-        i = kept[comp == c][np.argmax(p[comp == c])]
-        x, y = np.asarray(coords)[i]
-        out.append((float(p[comp == c].max()), int(x) + patch_size_l0 // 2, int(y) + patch_size_l0 // 2))
-    return out
+    prob = np.full((cy.max() + 3, cx.max() + 3), -np.inf)  # one cell of padding on every side
+    row = np.full(prob.shape, np.iinfo(np.int64).max)
+    prob[cy + 1, cx + 1], row[cy + 1, cx + 1] = p, kept
+    peak = np.ones(len(kept), dtype=bool)
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            if dy or dx:
+                q, r = prob[cy + 1 + dy, cx + 1 + dx], row[cy + 1 + dy, cx + 1 + dx]
+                peak &= (p > q) | ((p == q) & (kept < r))
+    half = patch_size_l0 // 2
+    return [(float(p[j]), int(coords[kept[j], 0]) + half, int(coords[kept[j], 1]) + half)
+            for j in np.flatnonzero(peak)]

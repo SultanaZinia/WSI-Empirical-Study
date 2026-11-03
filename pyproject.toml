@@ -12,6 +12,8 @@ dependencies = [
     "numpy",
     "scipy",
     "scikit-image",
+    "tifffile",
+    "imagecodecs",
     "h5py",
     "shapely>=2.0",
     "scikit-learn",

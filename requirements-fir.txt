@@ -9,6 +9,8 @@
 numpy
 scipy
 scikit-image
+tifffile
+imagecodecs
 h5py
 shapely
 scikit-learn
