@@ -33,6 +33,13 @@ def cell_tissue_fraction(
     return np.stack([gx, gy], axis=1).astype(np.int64), frac
 
 
+def patch_fraction(coords: np.ndarray, cells: np.ndarray, frac: np.ndarray) -> np.ndarray:
+    """(N,) tissue fraction of each patch in ``coords`` (N, 2), looked up in ``cell_tissue_fraction``'s
+    output for the same lattice."""
+    pos = {(int(x), int(y)): i for i, (x, y) in enumerate(cells)}
+    return frac[np.array([pos[(int(x), int(y))] for x, y in coords], dtype=np.int64)]
+
+
 def patch_grid(
     mask: np.ndarray,
     mask_downsample: float,

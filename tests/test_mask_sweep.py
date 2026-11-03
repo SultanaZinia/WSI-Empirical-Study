@@ -20,3 +20,12 @@ def test_score_mask_counts_dropped_tumour_and_lost_lesions():
     assert (r1["tumour_dropped"], r1["lesions_lost"]) == (2, 2)  # row 1 (frac 0.05) now dropped
     assert [(d["cut"], d["lesion_id"]) for d in lost] == [(0.0, 2), (0.10, 1), (0.10, 2)]
     assert lost[1]["diameter_um"] == 150.0
+
+
+def test_patch_fraction_looks_up_each_patch_cell():
+    from lesionbench.preprocess.grid import patch_fraction
+
+    cells = np.array([[0, 0], [10, 0], [0, 10], [10, 10]])
+    frac = np.array([0.9, 0.05, 0.3, 0.0])
+    coords = np.array([[10, 10], [0, 0], [10, 0]])
+    assert patch_fraction(coords, cells, frac).tolist() == [0.0, 0.9, 0.05]
