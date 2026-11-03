@@ -35,6 +35,7 @@ def _write_slide(root, sid, tumour, g):
         grp.create_dataset("rows", data=rows.astype(np.int64))
         grp.create_dataset("lesion_ids", data=np.zeros(len(rows), np.int32))
         grp.create_dataset("fracs", data=np.full(len(rows), 0.5, np.float32))
+        grp.create_dataset("lesion_diameter_um", data=np.full(int(tumour), 300.0, np.float32))
         f.attrs.update(attrs)
     with h5py.File(root / "uni" / f"{sid}.h5", "w") as f:
         for k, v in {"features": feats, "coords": coords, "patch_labels": labels, "lesion_ids": ids}.items():
@@ -179,3 +180,42 @@ def test_external_run_reproduces_the_saved_fold_models(method, cache, tmp_path, 
             np.testing.assert_array_equal(np.load(b / "retained.npz")[f"retained/{sid}"],
                                           np.load(a / "retained.npz")[f"retained/{sid}"])
         assert json.loads((b / "done.json").read_text())["n_external"] == 4
+
+
+def test_external_analysis_end_to_end(cache, tmp_path, monkeypatch):
+    import importlib.util
+    from dataclasses import replace
+
+    import yaml
+
+    from lesionbench.config import ROOT
+    from lesionbench.eval.runner import run_external
+
+    slides = _slides(cache)
+    src_out, ext_out = tmp_path / "src_out", tmp_path / "ext_out"
+    run_method_fold("random", 0, slides, CFG, src_out / "runs" / "uni", "cpu", {}, log=lambda m: None)
+    external = [replace(s, split="external") for s in slides if s.split == "test"]
+    run_external("random", 0, slides, external, CFG, src_out / "runs" / "uni", ext_out / "external" / "uni",
+                 "cpu", {}, log=lambda m: None)
+    data = tmp_path / "data"
+    data.mkdir()
+    stage = {"test_000": "micro", "test_001": "negative", "test_002": "itc", "test_003": "negative"}
+    (data / "stages.csv").write_text("patient,stage,center\n" + "".join(
+        f"{s}.tif,{v},{i % 2}\n" for i, (s, v) in enumerate(stage.items())))
+    for name, out, d in (("src", src_out, cache), ("ext", ext_out, cache)):
+        (tmp_path / f"{name}.yaml").write_text(yaml.safe_dump(
+            {"paths": {"data_root": str(data), "cache_root": str(d), "output_root": str(out)}}))
+    spec = importlib.util.spec_from_file_location("ea", ROOT / "scripts" / "external_analysis.py")
+    ea = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ea)
+    monkeypatch.setattr("sys.argv", ["ea", "--config", str(tmp_path / "ext.yaml"),
+                                     "--source-config", str(tmp_path / "src.yaml")])
+    ea.main()
+    rows = _rows(ext_out / "analysis" / "uni" / "slide_metrics.csv")
+    c17 = {r["group"]: r for r in rows if r["dataset"] == "c17"}
+    assert set(c17) == {"all", "0", "1"} and c17["all"]["n"] == "4" and c17["all"]["n_itc"] == "1"
+    c16 = [r for r in rows if r["dataset"] == "c16_test"]
+    assert len(c16) == 1 and c16[0]["n"] == "4"  # one fold, K = 4, group "all" only
+    # same fold model and slides: C16 test and "C17" AUC differ only through the stage labels used
+    assert (ext_out / "analysis" / "uni" / "table.md").exists()
+    assert _rows(ext_out / "analysis" / "uni" / "lesion_hits.csv")[0]["split"] == "external"
