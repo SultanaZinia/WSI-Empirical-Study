@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import openslide  # noqa: E402
 from matplotlib.collections import PatchCollection  # noqa: E402
 from matplotlib.colors import ListedColormap  # noqa: E402
-from matplotlib.patches import Rectangle  # noqa: E402
+from matplotlib.patches import Circle, Rectangle  # noqa: E402
 
 from lesionbench.config import load_config, write_run_json  # noqa: E402
 from lesionbench.metrics.probe import max_overlap  # noqa: E402
@@ -45,6 +45,9 @@ METHODS = [
     ("oracle", "Oracle-Cov"),
 ]
 KEPT_NORMAL, KEPT_TUMOUR, INK = "#2a78d6", "#eb6834", "#0b0b0b"
+SLOT_CMAP = ListedColormap(
+    ["#f0efec", "#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]
+)
 STAGES = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#184f95"]  # pruner 1..5, light -> dark
 
 
@@ -53,6 +56,13 @@ def outlines(ax, geoms, scale, lw=1.0):
         for p in getattr(g, "geoms", [g]):
             x, y = p.exterior.xy
             ax.plot(np.array(x) / scale, np.array(y) / scale, color=INK, lw=lw)
+
+
+def rings(ax, geoms, scale, radius=28):
+    """Fixed-size ring (thumbnail px) around each lesion, so micro lesions are findable at slide scale."""
+    for g in geoms:
+        c = g.centroid
+        ax.add_patch(Circle((c.x / scale, c.y / scale), radius, fill=False, ec=INK, lw=1.0))
 
 
 def squares(ax, coords, size, scale, colors, alpha=1.0):
@@ -110,6 +120,8 @@ def main():
         thumb = wsi.get_thumbnail((1600, 1600))
         scale = wsi.dimensions[0] / thumb.size[0]
         title = f"{sid} ({a['stratum']}, {len(coords):,} patches, K = {args.K}, fold 0)"
+        k_, i_ = kept["tc_ssa"][f"W/{sid}"]
+        frac = slot_tumour_fraction(k_, i_, kept["tc_ssa"][f"W_val/{sid}"], tumour.astype(float), len(coords))
 
         # 1. kept-patch map per method
         fig, axes = plt.subplots(3, 3, figsize=(15, 15 * thumb.size[1] / thumb.size[0] + 1.2))
@@ -117,6 +129,7 @@ def main():
             idx = kept[m][f"retained/{sid}"]
             ax.imshow(thumb)
             outlines(ax, geoms, scale, lw=0.8)
+            rings(ax, geoms, scale)
             # draw kept squares 3x enlarged so K = 32 patches stay visible on a thumbnail
             c = coords[idx] - size
             squares(
@@ -127,10 +140,10 @@ def main():
             ax.axis("off")
         fig.suptitle(
             title + "\norange = kept patch on tumour, blue = kept patch elsewhere (drawn 3x size); "
-            "black = lesion outline",
+            "black = lesion outline, ringed so small lesions are findable",
             fontsize=12,
         )
-        fig.tight_layout()
+        fig.tight_layout(rect=(0, 0, 1, 0.97))
         fig.savefig(out / f"{sid}_kept.png", dpi=110)
         plt.close(fig)
 
@@ -156,8 +169,8 @@ def main():
                 ox, oy = int(cx - side / 2), int(cy - side / 2)
                 img = wsi.read_region((ox, oy), level, (int(side / ds), int(side / ds))).convert("RGB")
                 own = rows[(les == lid) & (fr >= t)]
-                fig, axes = plt.subplots(3, 3, figsize=(15, 15.8))
-                for ax, (m, name) in zip(axes.flat, METHODS, strict=True):
+                fig, axes = plt.subplots(2, 5, figsize=(25, 11.2))
+                for ax, (m, name) in zip(axes.flat, METHODS, strict=False):  # last axis: TC-SSA slots
                     idx = kept[m][f"retained/{sid}"]
                     ax.imshow(img, extent=(ox, ox + side, oy + side, oy))
                     inwin = idx[
@@ -182,13 +195,31 @@ def main():
                     ax.set_xlim(ox, ox + side)
                     ax.set_ylim(oy + side, oy)
                     ax.axis("off")
+                ax = axes.flat[-1]  # TC-SSA dilution at lesion scale
+                ax.imshow(img, extent=(ox, ox + side, oy + side, oy), alpha=0.35)
+                win = np.flatnonzero(
+                    (coords[:, 0] > ox - size)
+                    & (coords[:, 0] < ox + side)
+                    & (coords[:, 1] > oy - size)
+                    & (coords[:, 1] < oy + side)
+                    & np.isfinite(frac)
+                )
+                squares(ax, coords[win], size, 1.0, SLOT_CMAP(frac[win]))
+                outlines(ax, [geoms[lid]], 1.0, lw=1.4)
+                ax.set_xlim(ox, ox + side)
+                ax.set_ylim(oy + side, oy)
+                ax.set_title(
+                    "TC-SSA: tumour share of each patch's slot\n(light = all normal, dark = all tumour)",
+                    fontsize=11,
+                )
+                ax.axis("off")
                 fig.suptitle(
                     f"{sid}, lesion {lid}: {diam[lid] / 1000:.2f} mm micro-metastasis, K = {args.K}, "
                     f"fold 0\nblack = lesion outline, dotted = patches that can hit it (≥ {t:.0%} "
                     "overlap), orange / blue = kept on tumour / elsewhere",
                     fontsize=12,
                 )
-                fig.tight_layout()
+                fig.tight_layout(rect=(0, 0, 1, 0.93))
                 fig.savefig(out / f"{sid}_lesion{lid}_zoom.png", dpi=100)
                 plt.close(fig)
 
@@ -202,21 +233,18 @@ def main():
         sel = np.flatnonzero(drop == -1)
         squares(ax1, coords[sel] - size, 3 * size, scale, [KEPT_TUMOUR] * len(sel))
         outlines(ax1, geoms, scale, lw=0.8)
+        rings(ax1, geoms, scale)
         ax1.set_title(
             "SLICEChat-style: pruner that removed each patch\n(light = 1st … dark = 5th; "
             "orange = kept, drawn 3x)",
             fontsize=11,
         )
         ax1.axis("off")
-        k_, i_ = kept["tc_ssa"][f"W/{sid}"]
-        frac = slot_tumour_fraction(k_, i_, kept["tc_ssa"][f"W_val/{sid}"], tumour.astype(float), len(coords))
         ax2.imshow(thumb, alpha=0.35)
         ok = np.flatnonzero(np.isfinite(frac))
-        cmap = ListedColormap(
-            ["#f0efec", "#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]
-        )
-        squares(ax2, coords[ok], size, scale, cmap(frac[ok]))
+        squares(ax2, coords[ok], size, scale, SLOT_CMAP(frac[ok]))
         outlines(ax2, geoms, scale, lw=0.8)
+        rings(ax2, geoms, scale)
         ax2.set_title(
             "TC-SSA: tumour share of the slot each patch joined\n(light = all-normal slot, dark = "
             "all-tumour slot)",
@@ -224,7 +252,7 @@ def main():
         )
         ax2.axis("off")
         fig.suptitle(title, fontsize=12)
-        fig.tight_layout()
+        fig.tight_layout(rect=(0, 0, 1, 0.97))
         fig.savefig(out / f"{sid}_mechanisms.png", dpi=110)
         plt.close(fig)
         print(role, sid, flush=True)
