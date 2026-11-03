@@ -1,9 +1,11 @@
-"""Control selectors: Random (floor), Oracle (Cov@K ceiling) and Oracle-LSR (LSR@K ceiling)."""
+"""Control selectors: Random (floor), Random-Hilbert (spatial floor for SLICEChat-style), Oracle (Cov@K
+ceiling) and Oracle-LSR (LSR@K ceiling)."""
 
 import torch
 from torch import Tensor
 
 from .base import SelectionResult
+from .slicechat import hilbert_index, keep_schedule
 
 
 class RandomSelector:
@@ -13,6 +15,26 @@ class RandomSelector:
         g = torch.Generator().manual_seed(seed)
         perm = torch.randperm(features.shape[0], generator=g)
         return SelectionResult(retained_idx=perm[:K])
+
+
+class RandomHilbertSelector:
+    """SLICEChat-style pruning without learning: the same keep schedule, but each stage removes a contiguous
+    Hilbert-curve window at a uniformly random position, so the K survivors lie in <= n_prune + 1 segments."""
+
+    def __init__(self, n_prune: int = 5):
+        self.n_prune = n_prune
+
+    def select(self, features: Tensor, K: int, *, grid: Tensor, seed: int, **ctx) -> SelectionResult:
+        g = torch.Generator().manual_seed(seed)
+        rows = torch.arange(features.shape[0])
+        for n_keep in keep_schedule(len(rows), K, self.n_prune):
+            S = len(rows) - n_keep
+            if S <= 0:
+                continue
+            perm = torch.argsort(hilbert_index(grid[rows]), stable=True)
+            j = int(torch.randint(0, len(rows) - S + 1, (1,), generator=g))
+            rows = torch.sort(rows[torch.cat([perm[:j], perm[j + S:]])]).values
+        return SelectionResult(retained_idx=rows)
 
 
 class OracleSelector:

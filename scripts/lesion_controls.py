@@ -1,10 +1,12 @@
-"""Lesion-level controls: Random (exact), Oracle-Cov, Oracle-LSR, Oracle-LSR-micro, at every K and threshold.
+"""Lesion-level controls: Random (exact), Random-Hilbert, Oracle-Cov, Oracle-LSR, Oracle-LSR-micro, at every K
+and threshold.
 
     python scripts/lesion_controls.py --config configs/server.yaml
 
 Reads CACHE_ROOT/patches/*.h5 (needs /overlap with lesion diameters: run scripts/add_overlap.py first).
 Writes OUTPUT_ROOT/lesion_controls/lesions.csv, one row per lesion x threshold x K x arm with ``hit`` = 0/1
-(Random: the exact hit probability), and summary.md with lesion-pooled LSR by lesion size class.
+(Random: the exact hit probability; Random-Hilbert: the mean over HILBERT_REPS seeded draws), and summary.md
+with lesion-pooled LSR by lesion size class.
 Oracle arms use the per-slide seed crc32(slide_id) XOR config seed, as in run_controls.py.
 """
 
@@ -22,9 +24,16 @@ import torch
 
 from lesionbench.config import ROOT, load_config
 from lesionbench.preprocess.annotations import size_class
-from lesionbench.selectors.controls import OracleLSRSelector, OracleSelector, random_hit_prob
+from lesionbench.selectors.controls import (
+    OracleLSRSelector,
+    OracleSelector,
+    RandomHilbertSelector,
+    random_hit_prob,
+)
+from lesionbench.selectors.slicechat import grid_from_coords
 
-ARMS = ("random", "oracle_cov", "oracle_lsr", "oracle_lsr_micro")
+ARMS = ("random", "random_hilbert", "oracle_cov", "oracle_lsr", "oracle_lsr_micro")
+HILBERT_REPS = 20  # random window draws per slide and K (seeds: slide seed + rep)
 PRIORITY = {"micro": 0, "itc": 1, "macro": 2}  # Oracle-LSR-micro: micro lesions first
 FIELDS = [
     "slide_id",
@@ -69,12 +78,20 @@ def main():
             if int(a["n_lesions"]) == 0:
                 continue
             labels = f["patch_labels"][:]
+            grid = grid_from_coords(f["coords"][:], int(a["patch_size_level0"]))
             ov_rows, ov_les, ov_frac = (f["overlap"][k][:] for k in ("rows", "lesion_ids", "fracs"))
             diam = f["overlap/lesion_diameter_um"][:]
         sid, n, m = str(a["slide_id"]), len(labels), int(a["n_lesions"])
         seed = zlib.crc32(sid.encode()) ^ int(cfg["seed"])
         cls = [size_class(d / 1000.0, st["itc_max"], st["micro_max"]) for d in diam]
         feats = torch.empty(n, 0)
+        hilbert_kept = {
+            K: [
+                RandomHilbertSelector().select(feats, K, grid=grid, seed=seed + r).retained_idx.numpy()
+                for r in range(HILBERT_REPS)
+            ]
+            for K in budgets
+        }
         base = {
             "slide_id": sid,
             "split": "test" if sid.startswith("test_") else "train",
@@ -106,6 +123,10 @@ def main():
                     kept = np.isin(ov_rows, res.retained_idx.numpy()) & ok
                     hits[arm] = np.isin(np.arange(m), ov_les[kept]).astype(float)
                 hits["random"] = np.array([random_hit_prob(n, K, int(e)) for e in n_elig])
+                hits["random_hilbert"] = np.mean(
+                    [np.isin(np.arange(m), ov_les[np.isin(ov_rows, kept) & ok]) for kept in hilbert_kept[K]],
+                    axis=0,
+                )
                 for lid in range(m):
                     for arm in ARMS:
                         rows_out.append(

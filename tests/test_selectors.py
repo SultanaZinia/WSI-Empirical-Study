@@ -5,7 +5,14 @@ import torch
 
 from lesionbench.metrics.retention import lsr_curve
 from lesionbench.selectors.base import topk_indices
-from lesionbench.selectors.controls import OracleLSRSelector, OracleSelector, RandomSelector, random_hit_prob
+from lesionbench.selectors.controls import (
+    OracleLSRSelector,
+    OracleSelector,
+    RandomHilbertSelector,
+    RandomSelector,
+    random_hit_prob,
+)
+from lesionbench.selectors.slicechat import hilbert_index
 
 F = torch.zeros(5, 3)  # features are unused by the controls
 LABELS = torch.tensor([0, 1, 0, 1, 1])
@@ -101,3 +108,25 @@ def test_random_hit_prob_closed_form_and_simulation():
     sel, f40 = RandomSelector(), torch.zeros(40, 1)
     hits = sum(bool({0, 1, 2} & set(sel.select(f40, 5, seed=s).retained_idx.tolist())) for s in range(4000))
     assert hits / 4000 == pytest.approx(random_hit_prob(40, 5, 3), abs=0.03)
+
+
+def _hilbert_segments(grid, rows):
+    pos = torch.argsort(torch.argsort(hilbert_index(grid), stable=True))[rows].sort().values
+    return 1 + int((pos.diff() > 1).sum())
+
+
+def test_random_hilbert_keeps_k_in_at_most_six_segments_and_is_seeded():
+    grid = torch.tensor([[x, y] for y in range(32) for x in range(32)])
+    feats = torch.zeros(len(grid), 0)
+    sel = RandomHilbertSelector()
+    a = sel.select(feats, 32, grid=grid, seed=3).retained_idx
+    assert len(a) == 32 == len(set(a.tolist()))
+    assert _hilbert_segments(grid, a) <= 6
+    assert torch.equal(a, sel.select(feats, 32, grid=grid, seed=3).retained_idx)
+    assert not torch.equal(a, sel.select(feats, 32, grid=grid, seed=4).retained_idx)
+
+
+def test_random_hilbert_k_at_least_n_keeps_all():
+    grid = torch.tensor([[x, 0] for x in range(5)])
+    kept = RandomHilbertSelector().select(torch.zeros(5, 0), 8, grid=grid, seed=0).retained_idx
+    assert kept.tolist() == [0, 1, 2, 3, 4]

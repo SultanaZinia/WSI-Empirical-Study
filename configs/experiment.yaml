@@ -65,7 +65,7 @@ esi:
   svm_auc_threshold: 0.90
 
 stats:
-  bootstrap_iters: 1000
+  bootstrap_iters: 10000     # 1000 in the plan; 10000 resolves Holm-adjusted p below 0.014 (user 2026-11-02)
   ci: 0.95
   multiple_comparison: holm
 
