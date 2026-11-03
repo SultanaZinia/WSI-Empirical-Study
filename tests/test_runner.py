@@ -121,6 +121,8 @@ def test_every_method_runs_end_to_end(method, cache, tmp_path, monkeypatch):
     if method in ("abmil", "siimil", "nrk_abmil", "pmil", "lts"):
         assert arrays["scores/test_000"].shape == (30,) and arrays["scores/test_000"].dtype == np.float16
     assert (out / "model.pt").exists()
+    if method == "pmil":  # the per-fold max-MIL head before PMIL's per-K fine-tuning (a FROC scorer)
+        assert (tmp_path / "pmil" / "fold0" / "maxmil_head.pt").exists()
     if method == "tc_ssa":
         assert "W/test_000" in arrays.files
     if method == "abmil":

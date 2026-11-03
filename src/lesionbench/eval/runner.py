@@ -4,7 +4,7 @@ Writes OUT/<method>/fold<f>/K<K>/ with predictions.csv (slide P(tumour) from the
 (Cov / LSR at every overlap threshold / TEP per slide), retained.npz (kept rows per slide; per-patch selection
 scores (fp16) when the selector has them; layer_of_drop and per-stage pruner scores for in-encoder pruners;
 nonzeros of W for merging), model.pt (state_dict of the fitted model), history.json and, last, done.json
-(run provenance). A K
+(run provenance). ``pmil`` also writes the per-fold max-MIL head ``pmil/fold<f>/maxmil_head.pt``. A K
 whose done.json exists is skipped, so a rerun resumes. ``abmil`` also writes the full-bag reference
 ``abmil_full/fold<f>/Kfull``.
 """
@@ -110,3 +110,5 @@ def run_method_fold(method: str, fold: int, slides: list[Slide], cfg: dict, out_
             "n_val": len(val), "n_test": len(test), "fit_seconds": round(t_fit, 1),
             "total_seconds": round(time.time() - t0, 1)}, indent=1))
         log(f"{name} fold {fold} K {K}: fit {t_fit:.0f} s, total {time.time() - t0:.0f} s")
+    if "pmil" in cache:  # per-fold max-MIL instance head, before PMIL's per-K fine-tuning (a FROC scorer)
+        torch.save(cache["pmil"][0].state_dict(), Path(out_root) / "pmil" / f"fold{fold}" / "maxmil_head.pt")
