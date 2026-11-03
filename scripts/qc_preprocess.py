@@ -19,7 +19,7 @@ import openslide
 
 from lesionbench.config import load_config
 from lesionbench.preprocess.annotations import lesions, read_asap_xml
-from lesionbench.preprocess.tissue import tissue_mask
+from lesionbench.preprocess.pipeline import slide_tissue_mask
 from lesionbench.preprocess.wsi import read_thumbnail
 
 
@@ -57,7 +57,7 @@ def main():
 
         fig, axes = plt.subplots(1, 2, figsize=(16, 16 * thumb.shape[0] / thumb.shape[1] / 2 + 1))
         axes[0].imshow(thumb)
-        axes[0].contour(tissue_mask(thumb), levels=[0.5], colors="k", linewidths=0.6)
+        axes[0].contour(slide_tissue_mask(thumb, ds, mpp0, cfg), levels=[0.5], colors="k", linewidths=0.6)
         axes[1].imshow(thumb)
         axes[1].imshow(patch_overlay(thumb.shape[:2], coords, labels, a["patch_size_level0"], ds))
         for lesion in les:

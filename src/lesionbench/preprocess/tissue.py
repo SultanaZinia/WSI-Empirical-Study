@@ -26,6 +26,7 @@ def tissue_mask(
     median_um: float = 0.0,
     min_area_mm2: float = 0.0,
     min_width_um: float = 0.0,
+    line_length_um: float = 0.0,
 ) -> np.ndarray:
     """Boolean tissue mask: two-level Otsu on HSV saturation and value.
 
@@ -39,6 +40,8 @@ def tissue_mask(
     - ``min_width_um``: drop components with no part at least this wide, i.e. that vanish under a
       morphological opening with a square this wide (coverslip edges, scratches and other thin lines).
       Porous tissue is kept whole: one wide part is enough.
+    - ``line_length_um``: apply the width rule only to components at least this long (longest bounding-box
+      side), so that thin lines go but short specks, which can hold isolated tumour cells, stay.
     """
     rgb = np.asarray(rgb, dtype=np.int32)
     mx = rgb.max(axis=-1)
@@ -58,6 +61,10 @@ def tissue_mask(
     if w > 1:
         wide = np.zeros(n + 1, dtype=bool)
         wide[np.unique(lab[ndi.binary_opening(mask, structure=np.ones((w, w)))])] = True
-        keep &= wide
+        long = np.ones(n + 1, dtype=bool)
+        if line_length_um > 0:
+            ext = [max(sl[0].stop - sl[0].start, sl[1].stop - sl[1].start) for sl in ndi.find_objects(lab)]
+            long[1:] = np.asarray(ext) * um_per_px >= line_length_um
+        keep &= wide | ~long
     keep[0] = False
     return keep[lab]

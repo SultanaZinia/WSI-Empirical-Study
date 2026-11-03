@@ -58,6 +58,13 @@ def test_tissue_mask_drops_thin_lines_keeps_porous_tissue():
     assert tissue_mask(thumb, um_per_px=10, min_width_um=20)[30:32, 2:32].all()  # 2 px wide survives 2 x 2
 
 
+
+def test_tissue_mask_line_rule_spares_short_specks():
+    # 1 x 30 line (300 um long) and a 1 x 2 speck (20 um), both too thin for a 3 x 3 opening
+    thumb = _glass_with((2, 22, 2, 22), (30, 31, 2, 32), (36, 37, 30, 32))
+    m = tissue_mask(thumb, um_per_px=10, min_width_um=30, line_length_um=200)
+    assert m[2:22, 2:22].all() and not m[30].any() and m[36, 30:32].all()
+
 def test_tissue_mask_drops_small_components_by_area():
     # 20 x 20 block = 400 px = 0.04 mm^2 at 10 um/px; 3 x 3 blob = 9 px = 0.0009 mm^2
     thumb = _glass_with((2, 22, 2, 22), (30, 33, 30, 33))

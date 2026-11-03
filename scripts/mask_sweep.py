@@ -25,6 +25,8 @@ CANDIDATES = {  # tissue_mask keyword arguments, physical units
     "median_width": {"median_um": 50, "min_width_um": 30},
     "median_width_area": {"median_um": 50, "min_width_um": 30, "min_area_mm2": 0.01},
     "width_area": {"min_width_um": 30, "min_area_mm2": 0.01},
+    "lines_1mm": {"min_width_um": 30, "line_length_um": 1000},
+    "lines_500um": {"min_width_um": 30, "line_length_um": 500},
 }
 CUTS = (0.0, 0.10, 0.25, 0.50)
 LESION_COLS = ["slide_id", "candidate", "cut", "lesion_id", "diameter_um"]

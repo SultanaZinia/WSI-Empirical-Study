@@ -13,11 +13,17 @@ from .labels import label_patches, lesion_overlaps
 from .tissue import tissue_mask
 
 
+def slide_tissue_mask(thumb_rgb, mask_downsample, mpp0, cfg):
+    """The configured tissue mask of a slide thumbnail (``cfg["preprocess"]["tissue"]``)."""
+    return tissue_mask(thumb_rgb, um_per_px=mask_downsample * mpp0, **cfg["preprocess"]["tissue"])
+
+
 def preprocess_slide(slide_id, thumb_rgb, mask_downsample, level0_size, mpp0, xml_path, cfg) -> dict:
     """Patch coords, labels and lesion ids for one slide. ``xml_path`` is None for slides without tumor."""
     p = cfg["preprocess"]
     ps0 = patch_size_level0(p["patch_size"], p["target_mpp"], mpp0)
-    coords = patch_grid(tissue_mask(thumb_rgb), mask_downsample, level0_size, ps0, p["min_tissue_fraction"])
+    mask = slide_tissue_mask(thumb_rgb, mask_downsample, mpp0, cfg)
+    coords = patch_grid(mask, mask_downsample, level0_size, ps0, p["min_tissue_fraction"])
     les = []
     if xml_path is not None:
         les = lesions(*read_asap_xml(xml_path), merge_px=p["lesion_merge_um"] / mpp0)
