@@ -150,3 +150,32 @@ def test_patch_labels_never_reach_training(method, cache, tmp_path):
     a = _rows(tmp_path / "a" / method / "fold0" / "K4" / "predictions.csv")
     b = _rows(tmp_path / "b" / method / "fold0" / "K4" / "predictions.csv")
     assert a == b
+
+
+@pytest.mark.parametrize("method", METHODS)
+def test_external_run_reproduces_the_saved_fold_models(method, cache, tmp_path, monkeypatch):
+    # Rebuilding every (method, K) from its saved weights must give the same kept patches and predictions
+    # on the same slides as the fitted run did: no retraining happens.
+    from dataclasses import replace
+
+    from lesionbench.eval.runner import run_external
+
+    monkeypatch.setattr(methods, "affinity_prototypes",
+                        lambda tops, seed: np.stack([tops[0][0], tops[0][-1]]))
+    slides = _slides(cache)
+    run_method_fold(method, 0, slides, CFG, tmp_path / "src", "cpu", {}, log=lambda m: None)
+    external = [replace(s, split="external") for s in slides if s.split == "test"]
+    run_external(method, 0, slides, external, CFG, tmp_path / "src", tmp_path / "ext", "cpu", {},
+                 log=lambda m: None)
+    names = [method] + (["abmil_full"] if method == "abmil" else [])
+    for name, K in [(n, "full" if n == "abmil_full" else 4) for n in names]:
+        a = tmp_path / "src" / name / "fold0" / f"K{K}"
+        b = tmp_path / "ext" / name / "fold0" / f"K{K}"
+        src = {r["slide_id"]: r for r in _rows(a / "predictions.csv") if r["split"] == "test"}
+        ext = {r["slide_id"]: r for r in _rows(b / "predictions.csv")}
+        assert set(ext) == set(src) and {r["split"] for r in ext.values()} == {"external"}
+        for sid in src:
+            assert float(ext[sid]["prob"]) == pytest.approx(float(src[sid]["prob"]), abs=1e-6)
+            np.testing.assert_array_equal(np.load(b / "retained.npz")[f"retained/{sid}"],
+                                          np.load(a / "retained.npz")[f"retained/{sid}"])
+        assert json.loads((b / "done.json").read_text())["n_external"] == 4

@@ -1,9 +1,11 @@
 """One recipe per method: fit on a fold's training slides, then select K patches and predict for any slide.
 
 Every slide prediction uses only what the method kept at K (matched budget); ``abmil_full`` (full-bag ABMIL)
-is the no-budget reference. Fold-level pieces that do not depend on K (ABMIL model, normal key banks, PMIL
-head and prototypes) are fitted once per fold and shared through ``cache``. Only the Oracle reads patch
-labels.
+is the no-budget reference. With ``state`` (a run's saved model.pt), ``fit`` rebuilds the fitted method from
+those weights instead of training it (external validation); K-independent pieces that were not saved (normal
+key banks) are rebuilt from the same fold training slides. Fold-level pieces that do not depend on K (ABMIL
+model, normal key banks, PMIL head and prototypes) are fitted once per fold and shared through ``cache``. Only
+the Oracle reads patch labels.
 """
 
 import copy
@@ -57,12 +59,21 @@ def _abmil(bags_tr, bags_va, in_dim, tcfg, seed, device):
                      device=device)
 
 
-def _fixed_selection(select_fn, train, val, tcfg, seed, device) -> Fitted:
+def _loaded(model: torch.nn.Module, state: dict, device) -> torch.nn.Module:
+    model.load_state_dict(state)
+    return model.to(device).eval()
+
+
+def _fixed_selection(select_fn, train, val, tcfg, seed, device, state=None) -> Fitted:
     """A selector needing no slide-label training (Random, Oracle, normal banks) + ABMIL on its K patches."""
     def bags(slides):
         return [(s.features[select_fn(s).retained_idx], s.label) for s in slides]
 
-    model, hist = _abmil(bags(train), bags(val), train[0].features.shape[1], tcfg, seed, device)
+    in_dim = train[0].features.shape[1]
+    if state is None:
+        model, hist = _abmil(bags(train), bags(val), in_dim, tcfg, seed, device)
+    else:
+        model, hist = _loaded(GatedABMIL(in_dim, dropout=tcfg["dropout"]), state, device), []
     model.eval()
 
     @torch.no_grad()
@@ -98,15 +109,16 @@ def _pmil_parts(train, tcfg, seed, device):
 
 
 def fit(method: str, K: int, train: list[Slide], val: list[Slide], tcfg: dict, seed: int, device,
-        cache: dict) -> Fitted:
+        cache: dict, state: dict | None = None) -> Fitted:
     in_dim = train[0].features.shape[1]
     if method == "random":
         return _fixed_selection(lambda s: RandomSelector().select(s.features, K, seed=slide_seed(s, seed)),
-                                train, val, tcfg, seed, device)
+                                train, val, tcfg, seed, device, state)
     if method == "oracle":
         return _fixed_selection(
             lambda s: OracleSelector().select(s.features, K, patch_labels=torch.from_numpy(s.patch_labels),
-                                              seed=slide_seed(s, seed)), train, val, tcfg, seed, device)
+                                              seed=slide_seed(s, seed)), train, val, tcfg, seed, device,
+            state)
     if method in ("siimil", "nrk_abmil"):
         if method not in cache:
             cache[method] = _bank(method, train, seed, device)
@@ -119,8 +131,10 @@ def fit(method: str, K: int, train: list[Slide], val: list[Slide], tcfg: dict, s
                 memo[s.slide_id] = SelectionResult(retained_idx=r.retained_idx.cpu(), scores=r.scores.cpu())
             return memo[s.slide_id]
 
-        return _fixed_selection(select, train, val, tcfg, seed, device)
+        return _fixed_selection(select, train, val, tcfg, seed, device, state)
     if method in ("abmil", "abmil_full"):
+        if state is not None:
+            cache["abmil"] = (_loaded(GatedABMIL(in_dim, dropout=tcfg["dropout"]), state, device), [])
         if "abmil" not in cache:
             cache["abmil"] = _abmil([(s.features, s.label) for s in train],
                                     [(s.features, s.label) for s in val], in_dim, tcfg, seed, device)
@@ -138,12 +152,17 @@ def fit(method: str, K: int, train: list[Slide], val: list[Slide], tcfg: dict, s
 
         return Fitted(select, prob, hist, model)
     if method == "pmil":
-        if "pmil" not in cache:
-            cache["pmil"] = _pmil_parts(train, tcfg, seed, device)
-        head, protos = cache["pmil"]
-        model, hist = train_pmil(lambda: PMIL(copy.deepcopy(head), protos, s=K),
-                                 [(s.features, s.label) for s in train], [(s.features, s.label) for s in val],
-                                 seed, epochs=_cap(30, tcfg), device=device)
+        if state is not None:
+            model = PMIL(torch.nn.Linear(in_dim, 2), torch.zeros_like(state["prototypes"]), s=K)
+            model, hist = _loaded(model, state, device), []
+        else:
+            if "pmil" not in cache:
+                cache["pmil"] = _pmil_parts(train, tcfg, seed, device)
+            head, protos = cache["pmil"]
+            model, hist = train_pmil(lambda: PMIL(copy.deepcopy(head), protos, s=K),
+                                     [(s.features, s.label) for s in train],
+                                     [(s.features, s.label) for s in val], seed, epochs=_cap(30, tcfg),
+                                     device=device)
         model.eval()
 
         def select(s):
@@ -156,9 +175,13 @@ def fit(method: str, K: int, train: list[Slide], val: list[Slide], tcfg: dict, s
 
         return Fitted(select, prob, hist, model)
     if method == "tc_ssa":
-        model, hist = train_tcssa(lambda: TCSSA(in_dim, n_slots=K), [(s.features, s.label) for s in train],
-                                  [(s.features, s.label) for s in val], seed, max_epochs=_cap(50, tcfg),
-                                  device=device)
+        if state is not None:
+            model, hist = _loaded(TCSSA(in_dim, n_slots=K), state, device), []
+        else:
+            model, hist = train_tcssa(lambda: TCSSA(in_dim, n_slots=K),
+                                      [(s.features, s.label) for s in train],
+                                      [(s.features, s.label) for s in val], seed, max_epochs=_cap(50, tcfg),
+                                      device=device)
         model.eval()
 
         def select(s):
@@ -176,9 +199,13 @@ def fit(method: str, K: int, train: list[Slide], val: list[Slide], tcfg: dict, s
         def anneal(m, epoch):
             m.tau = cosine_tau(epoch, anneal_epochs=tcfg["stop_epoch"])
 
-        model, hist = train_mil(lambda: LTS(in_dim, K, dropout=tcfg["dropout"]),
-                                [(s.features, s.label) for s in train], [(s.features, s.label) for s in val],
-                                tc, seed, on_epoch=anneal, device=device)
+        if state is not None:
+            model, hist = _loaded(LTS(in_dim, K, dropout=tcfg["dropout"]), state, device), []
+        else:
+            model, hist = train_mil(lambda: LTS(in_dim, K, dropout=tcfg["dropout"]),
+                                    [(s.features, s.label) for s in train],
+                                    [(s.features, s.label) for s in val], tc, seed, on_epoch=anneal,
+                                    device=device)
         model.eval()
 
         def select(s):
@@ -192,10 +219,13 @@ def fit(method: str, K: int, train: list[Slide], val: list[Slide], tcfg: dict, s
         return Fitted(select, prob, hist, model)
     if method == "slicechat":
         tc = {**tcfg, "max_epochs": _cap(tcfg["max_epochs"], tcfg)}
-        model, hist = train_mil(lambda: SLICEChatMIL(in_dim, K, dropout=tcfg["dropout"]),
-                                [((s.features, s.grid), s.label) for s in train],
-                                [((s.features, s.grid), s.label) for s in val], tc, seed, extra_loss=aux_loss,
-                                device=device)
+        if state is not None:
+            model, hist = _loaded(SLICEChatMIL(in_dim, K, dropout=tcfg["dropout"]), state, device), []
+        else:
+            model, hist = train_mil(lambda: SLICEChatMIL(in_dim, K, dropout=tcfg["dropout"]),
+                                    [((s.features, s.grid), s.label) for s in train],
+                                    [((s.features, s.grid), s.label) for s in val], tc, seed,
+                                    extra_loss=aux_loss, device=device)
         model.eval()
 
         def select(s):

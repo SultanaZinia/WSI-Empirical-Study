@@ -7,6 +7,8 @@ nonzeros of W for merging), model.pt (state_dict of the fitted model), history.j
 (run provenance). ``pmil`` also writes the per-fold max-MIL head ``pmil/fold<f>/maxmil_head.pt``. A K
 whose done.json exists is skipped, so a rerun resumes. ``abmil`` also writes the full-bag reference
 ``abmil_full/fold<f>/Kfull``.
+
+``run_external`` applies a finished fold's saved models, without training, to slides of another dataset.
 """
 
 import csv
@@ -55,7 +57,7 @@ def evaluate_run(fitted, slides: list[Slide], thresholds, primary: float, strict
     for s in slides:
         r = fitted.select(s)
         idx = r.retained_idx.numpy()
-        split = "test" if s.split == "test" else "val"
+        split = s.split if s.split in ("test", "external") else "val"
         preds.append({"slide_id": s.slide_id, "split": split, "label": s.label, "prob": fitted.prob(s, r)})
         curve = lsr_curve(idx, *s.overlap, s.n_lesions, sorted({*thresholds, primary}))
         y_strict = max_overlap(len(s.features), s.overlap[0], s.overlap[2]) >= strict
@@ -112,3 +114,38 @@ def run_method_fold(method: str, fold: int, slides: list[Slide], cfg: dict, out_
         log(f"{name} fold {fold} K {K}: fit {t_fit:.0f} s, total {time.time() - t0:.0f} s")
     if "pmil" in cache:  # per-fold max-MIL instance head, before PMIL's per-K fine-tuning (a FROC scorer)
         torch.save(cache["pmil"][0].state_dict(), Path(out_root) / "pmil" / f"fold{fold}" / "maxmil_head.pt")
+
+
+def run_external(method: str, fold: int, slides: list[Slide], external: list[Slide], cfg: dict, source_root,
+                 out_root, device, provenance: dict, budgets=None, log=print) -> None:
+    """External validation: rebuild each (method, K) of ``fold`` from its saved model.pt under
+    ``source_root`` (no training; normal key banks are rebuilt from the same fold training slides of
+    ``slides``) and evaluate ``external`` slides. Writes predictions.csv, retention.csv, retained.npz and
+    done.json under ``out_root``, as ``run_method_fold`` does; finished K are skipped."""
+    tcfg, seed = cfg["training"], int(cfg["seed"]) + fold
+    train, _ = fold_split(slides, tcfg["n_folds"], int(cfg["seed"]), fold,
+                          cfg.get("exclude_from_training", []))
+    cache: dict = {}
+    runs = [(method, K) for K in (budgets or cfg["budgets"])]
+    if method == "abmil":
+        runs.append(("abmil_full", "full"))
+    for name, K in runs:
+        src = Path(source_root) / name / f"fold{fold}" / f"K{K}"
+        out = Path(out_root) / name / f"fold{fold}" / f"K{K}"
+        if (out / "done.json").exists():
+            log(f"{name} fold {fold} K {K}: done, skipping")
+            continue
+        out.mkdir(parents=True, exist_ok=True)
+        t0 = time.time()
+        state = torch.load(src / "model.pt", map_location=device)
+        fitted = fit(name, 0 if K == "full" else K, train, [], tcfg, seed, device, cache, state=state)
+        preds, rets, lsr_fields, arrays = evaluate_run(fitted, external, cfg["lsr_overlap_thresholds"],
+                                                       cfg["primary_overlap_threshold"],
+                                                       cfg["strict_overlap_threshold"])
+        _write_csv(out / "predictions.csv", PRED_FIELDS, preds)
+        _write_csv(out / "retention.csv", RET_FIELDS + lsr_fields, rets)
+        np.savez_compressed(out / "retained.npz", **arrays)
+        (out / "done.json").write_text(json.dumps({
+            **provenance, "method": name, "K": K, "fold": fold, "seed": seed, "source": str(src),
+            "n_external": len(external), "total_seconds": round(time.time() - t0, 1)}, indent=1))
+        log(f"{name} fold {fold} K {K}: {len(external)} external slides, {time.time() - t0:.0f} s")
