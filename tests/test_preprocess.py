@@ -46,12 +46,16 @@ def _glass_with(*boxes):
     return thumb
 
 
-def test_tissue_mask_drops_thin_lines_by_mean_width():
-    # 20 x 20 block: area 400, boundary 76 px -> width 10.5 px; 1 x 30 line: area 30, boundary 30 -> width 2
-    thumb = _glass_with((2, 22, 2, 22), (30, 31, 2, 32))
-    m = tissue_mask(thumb, um_per_px=10, min_width_um=30)
-    assert m[2:22, 2:22].all() and not m[30].any()
-    assert tissue_mask(thumb, um_per_px=10, min_width_um=20)[30, 2:32].all()
+def test_tissue_mask_drops_thin_lines_keeps_porous_tissue():
+    # 20 x 20 block riddled with 1-px glass holes (porous), and a 2 x 30 line
+    thumb = _glass_with((2, 22, 2, 22), (30, 32, 2, 32))
+    thumb[3:21:3, 3:21:3] = 235
+    m = tissue_mask(thumb, um_per_px=10, min_width_um=30)  # needs a 3 x 3 solid part
+    expected_block = np.ones((20, 20), dtype=bool)
+    expected_block[1:19:3, 1:19:3] = False
+    np.testing.assert_array_equal(m[2:22, 2:22], expected_block)  # whole component kept, holes and all
+    assert not m[30:32].any()
+    assert tissue_mask(thumb, um_per_px=10, min_width_um=20)[30:32, 2:32].all()  # 2 px wide survives 2 x 2
 
 
 def test_tissue_mask_drops_small_components_by_area():

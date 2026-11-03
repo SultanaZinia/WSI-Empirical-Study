@@ -36,8 +36,9 @@ def tissue_mask(
     - ``median_um``: median-filter S and V over a window this wide before thresholding (CLAM's ``mthresh``),
       which removes single-pixel speckle.
     - ``min_area_mm2``: drop 8-connected components smaller than this.
-    - ``min_width_um``: drop components whose mean width, 2 * area / boundary length, is below this
-      (coverslip edges, scratches and other thin lines).
+    - ``min_width_um``: drop components with no part at least this wide, i.e. that vanish under a
+      morphological opening with a square this wide (coverslip edges, scratches and other thin lines).
+      Porous tissue is kept whole: one wide part is enough.
     """
     rgb = np.asarray(rgb, dtype=np.int32)
     mx = rgb.max(axis=-1)
@@ -52,9 +53,11 @@ def tissue_mask(
         return mask
     lab, n = ndi.label(mask, structure=np.ones((3, 3)))
     area = np.bincount(lab.ravel(), minlength=n + 1).astype(float)
-    edge = mask & ~ndi.binary_erosion(mask, structure=np.ones((3, 3)), border_value=0)
-    boundary = np.bincount(lab[edge], minlength=n + 1).astype(float)
-    width_um = np.divide(2 * area, boundary, out=np.zeros_like(area), where=boundary > 0) * um_per_px
-    keep = (area * um_per_px**2 / 1e6 >= min_area_mm2) & (width_um >= min_width_um)
+    keep = area * um_per_px**2 / 1e6 >= min_area_mm2
+    w = int(round(min_width_um / um_per_px))
+    if w > 1:
+        wide = np.zeros(n + 1, dtype=bool)
+        wide[np.unique(lab[ndi.binary_opening(mask, structure=np.ones((w, w)))])] = True
+        keep &= wide
     keep[0] = False
     return keep[lab]
