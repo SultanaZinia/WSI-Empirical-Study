@@ -169,7 +169,7 @@ def main():
                 ox, oy = int(cx - side / 2), int(cy - side / 2)
                 img = wsi.read_region((ox, oy), level, (int(side / ds), int(side / ds))).convert("RGB")
                 own = rows[(les == lid) & (fr >= t)]
-                fig, axes = plt.subplots(2, 5, figsize=(25, 11.2))
+                fig, axes = plt.subplots(2, 5, figsize=(25, 12.8))
                 for ax, (m, name) in zip(axes.flat, METHODS, strict=False):  # last axis: TC-SSA slots
                     idx = kept[m][f"retained/{sid}"]
                     ax.imshow(img, extent=(ox, ox + side, oy + side, oy))
@@ -196,7 +196,7 @@ def main():
                     ax.set_ylim(oy + side, oy)
                     ax.axis("off")
                 ax = axes.flat[-1]  # TC-SSA dilution at lesion scale
-                ax.imshow(img, extent=(ox, ox + side, oy + side, oy), alpha=0.35)
+                ax.imshow(img, extent=(ox, ox + side, oy + side, oy))
                 win = np.flatnonzero(
                     (coords[:, 0] > ox - size)
                     & (coords[:, 0] < ox + side)
@@ -204,7 +204,7 @@ def main():
                     & (coords[:, 1] < oy + side)
                     & np.isfinite(frac)
                 )
-                squares(ax, coords[win], size, 1.0, SLOT_CMAP(frac[win]))
+                squares(ax, coords[win], size, 1.0, SLOT_CMAP(frac[win]), alpha=0.7)
                 outlines(ax, [geoms[lid]], 1.0, lw=1.4)
                 ax.set_xlim(ox, ox + side)
                 ax.set_ylim(oy + side, oy)
