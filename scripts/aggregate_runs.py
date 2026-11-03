@@ -14,7 +14,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from lesionbench.config import load_config
+from lesionbench.config import load_config, write_run_json
 from lesionbench.eval.aggregate import (
     lesion_hits,
     mean_sd,
@@ -39,6 +39,7 @@ def main():
     runs = run_dirs(Path(cfg["paths"]["output_root"]) / "runs" / args.backbone)
     out = Path(cfg["paths"]["output_root"]) / "analysis" / args.backbone
     out.mkdir(parents=True, exist_ok=True)
+    write_run_json(out, cfg, "run_aggregate.json", backbone=args.backbone)
     overlaps = {}
     for p in (Path(cfg["paths"]["cache_root"]) / "patches").glob("*.h5"):
         with h5py.File(p) as f:

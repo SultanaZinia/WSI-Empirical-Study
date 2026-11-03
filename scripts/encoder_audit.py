@@ -62,7 +62,9 @@ def main():
     cache, seed, n_folds = cfg["paths"]["cache_root"], int(cfg["seed"]), cfg["training"]["n_folds"]
     thresholds, st = cfg["lsr_overlap_thresholds"], cfg["strata_mm"]
     non_exh, exclude = set(cfg.get("non_exhaustive_slides", [])), cfg.get("exclude_from_training", [])
-    slides = [load_slide(cache, args.backbone, sid) for sid in slide_ids(cache, args.backbone)]
+    t_primary = cfg["primary_overlap_threshold"]  # patch labels (secondary ESI/SVM check only)
+    slides = [load_slide(cache, args.backbone, sid, label_threshold=t_primary)
+              for sid in slide_ids(cache, args.backbone)]
     test = [s for s in slides if s.split == "test"]
     print(f"{len(slides)} slides, git {sha}", flush=True)
 

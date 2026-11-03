@@ -41,9 +41,10 @@ def retention_auc(budgets, lsr) -> float:
 
 
 def attribute(probe_auc: np.ndarray, hittable: np.ndarray, hit: np.ndarray, cut: float) -> np.ndarray:
-    """Per lesion: unhittable (no eligible patch), retained (hit), encoder (probe AUC < cut) or selector
-    loss."""
-    out = np.where(probe_auc < cut, "encoder", "selector").astype(object)
+    """Per lesion: unhittable (no eligible patch), retained (hit), encoder (probe AUC < cut), selector loss,
+    or unknown (lost but no probe AUC, e.g. no lesion-free patches on the slide)."""
+    out = np.where(np.isnan(probe_auc), "unknown",
+                   np.where(probe_auc < cut, "encoder", "selector")).astype(object)
     out[hit.astype(bool)] = "retained"
     out[~hittable.astype(bool)] = "unhittable"
     return out

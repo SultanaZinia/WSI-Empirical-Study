@@ -12,11 +12,13 @@ lesion tables, SLICEChat-style's layer_of_drop (runs/<backbone>/slicechat/) and 
 - micro_gap.csv: micro LSR, Random (exact) and Oracle-LSR-micro, gap to the ceiling and NRS with CIs;
   retention AUC over K.
 - attribution.csv: micro lesions per method x K x probe cut (0.85 / 0.90 / 0.95): shares retained / selector
-  / encoder / unhittable, and selector - encoder share among lost lesions (H2) with a CI.
+  / encoder / unhittable / unknown
+  (lost, no probe AUC), and selector - encoder share among lost lesions (H2) with a CI.
 - layer_of_death.csv: SLICEChat-style, fraction of hittable lesions still holding a patch after each pruner.
 - summary.md: the micro results at K = 32.
 
-CIs: B slide resamples (seeded); lesions of a slide stay together; fold models share each resample.
+CIs: B slide resamples (seeded); lesions of a slide stay together; fold models share each resample. Only
+(method, K) with every fold finished are used.
 """
 
 import argparse
@@ -26,8 +28,8 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from lesionbench.config import load_config
-from lesionbench.eval.aggregate import read_csv, write_csv
+from lesionbench.config import load_config, write_run_json
+from lesionbench.eval.aggregate import read_csv, run_dirs, write_csv
 from lesionbench.eval.lesion_analysis import (
     attribute,
     boot_share_diff,
@@ -56,8 +58,14 @@ def main():
     out = root / "analysis" / args.backbone / "lesion"
     out.mkdir(parents=True, exist_ok=True)
 
+    n_done = defaultdict(int)
+    for m, K, _, _ in run_dirs(root / "runs" / args.backbone):
+        n_done[(m, K)] += 1
+    complete = {mk for mk, n in n_done.items() if n == n_folds}
+    for mk in sorted(set(n_done) - complete):
+        print(f"skipping {mk}: {n_done[mk]}/{n_folds} folds")
     hits = [h for h in read_csv(root / "analysis" / args.backbone / "lesion_hits.csv")
-            if h["split"] == "test" and h["exhaustive"] == "1"]
+            if h["split"] == "test" and h["exhaustive"] == "1" and (h["method"], h["K"]) in complete]
     ctl = [r for r in read_csv(root / "lesion_controls" / "lesions.csv")
            if r["split"] == "test" and r["exhaustive"] == "1" and abs(float(r["threshold"]) - t) < 1e-9
            and r["arm"] in CONTROLS]
@@ -156,7 +164,7 @@ def main():
             lo, hi = percentile_ci(diff)
             att_rows.append({"method": m, "K": K, "cut": cut, "n": len(rows) // n_folds,
                              **{f"share_{c}": float(np.mean(cat == c))
-                                for c in ("retained", "selector", "encoder", "unhittable")},
+                                for c in ("retained", "selector", "encoder", "unhittable", "unknown")},
                              "selector_minus_encoder_among_lost": float(boot_share_diff(sel, enc, one)[0]),
                              "ci_lo": lo, "ci_hi": hi})
     write_csv(out / "attribution.csv", att_rows)
@@ -168,7 +176,7 @@ def main():
             overlaps[s] = tuple(f["overlap"][k][:] for k in ("rows", "lesion_ids", "fracs"))
     classes = {(h["slide_id"], int(h["lesion_id"])): h["size_class"] for h in hits}
     lod_rows = []
-    for K in budgets:
+    for K in [k for k in budgets if ("slicechat", k) in complete]:
         lod = defaultdict(list)
         for f in range(n_folds):
             z = np.load(root / "runs" / args.backbone / "slicechat" / f"fold{f}" / f"K{K}" / "retained.npz")
@@ -187,6 +195,7 @@ def main():
                              **{f"after_pruner_{b}": float(x) for b, x in enumerate(surv)}})
     write_csv(out / "layer_of_death.csv", lod_rows)
 
+    write_run_json(out, cfg, backbone=args.backbone, bootstrap_iters=B, seed=seed, threshold=t)
     (out / "summary.md").write_text(summary(gap_rows, d50_rows, att_rows, lod_rows, budgets[0], B, t))
     print(out / "summary.md")
 

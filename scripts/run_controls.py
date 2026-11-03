@@ -15,10 +15,12 @@ import zlib
 from pathlib import Path
 
 import h5py
+import numpy as np
 import torch
 
 from lesionbench.config import ROOT, load_config
-from lesionbench.metrics.retention import cov_at_k, lsr_at_k, lsr_curve, tep_at_k
+from lesionbench.metrics.probe import max_overlap
+from lesionbench.metrics.retention import cov_at_k, lsr_curve, tep_at_k
 from lesionbench.selectors.controls import OracleSelector, RandomSelector
 
 FIELDS = ["slide_id", "split", "stratum", "n_patches", "n_pos", "n_lesions", "method", "K", "seed",
@@ -38,15 +40,17 @@ def main():
     (out_dir / "run.json").write_text(json.dumps({"git_sha": sha, "config": cfg}, indent=1, default=str))
 
     methods = {"random": RandomSelector(), "oracle": OracleSelector()}
-    thresholds = cfg["lsr_overlap_thresholds"]
+    thresholds, t_primary = cfg["lsr_overlap_thresholds"], cfg["primary_overlap_threshold"]
     lsr_cols = {t: f"lsr_t{round(100 * t):02d}" for t in thresholds}
     with open(out_dir / "metrics.csv", "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=FIELDS + list(lsr_cols.values()))
         w.writeheader()
         for p in sorted((Path(cfg["paths"]["cache_root"]) / "patches").glob("*.h5")):
             with h5py.File(p) as f:
-                labels, ids, a = f["patch_labels"][:], f["lesion_ids"][:], dict(f.attrs)
+                n, a = len(f["patch_labels"]), dict(f.attrs)
                 ov = [f["overlap"][k][:] for k in ("rows", "lesion_ids", "fracs")]
+            # patch labels at the primary threshold, as in the runner (not the cached 0.10 labels)
+            labels = (max_overlap(n, ov[0], ov[2]) >= t_primary).astype(np.uint8)
             sid = str(a["slide_id"])
             seed = zlib.crc32(sid.encode()) ^ int(cfg["seed"])
             feats, y = torch.empty(len(labels), 0), torch.from_numpy(labels)
@@ -58,7 +62,7 @@ def main():
                         "slide_id": sid, "split": "test" if sid.startswith("test_") else "train",
                         "stratum": a["stratum"], "n_patches": len(labels), "n_pos": int(labels.sum()),
                         "n_lesions": int(a["n_lesions"]), "method": name, "K": K, "seed": seed,
-                        "cov": cov_at_k(idx, labels), "lsr": lsr_at_k(idx, ids, int(a["n_lesions"])),
+                        "cov": cov_at_k(idx, labels), "lsr": curve[t_primary],
                         "tep": tep_at_k(idx, labels),
                         **{lsr_cols[t]: v for t, v in curve.items()},
                     })

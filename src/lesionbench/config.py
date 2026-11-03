@@ -1,6 +1,8 @@
 """Load configs/experiment.yaml merged with a server config; server paths can be overridden by env vars."""
 
+import json
 import os
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -23,3 +25,14 @@ def load_config(server_path, experiment_path=ROOT / "configs" / "experiment.yaml
     if "SLURM_ACCOUNT" in os.environ:
         server.setdefault("slurm", {})["account"] = os.environ["SLURM_ACCOUNT"]
     return {**cfg, **server}
+
+
+def git_sha() -> str:
+    git = ["git", "-C", str(ROOT), "rev-parse", "HEAD"]
+    return subprocess.run(git, capture_output=True, text=True).stdout.strip()
+
+
+def write_run_json(out_dir, cfg: dict, name: str = "run.json", **extra) -> None:
+    """Provenance next to an output folder: git SHA, config (incl. seed) and run-specific values."""
+    Path(out_dir, name).write_text(json.dumps({"git_sha": git_sha(), **extra, "config": cfg}, indent=1,
+                                              default=str))

@@ -44,6 +44,8 @@ def test_attribute_precedence():
     cat = attribute(probe_auc=np.array([0.95, 0.80, 0.80, 0.95, np.nan]),
                     hittable=np.array([1, 1, 1, 1, 0]), hit=np.array([0, 0, 1, 1, 0]), cut=0.90)
     assert cat.tolist() == ["selector", "encoder", "retained", "retained", "unhittable"]
+    lost = attribute(np.array([np.nan, np.nan]), np.array([1, 1]), np.array([0, 1]), cut=0.90)
+    assert lost.tolist() == ["unknown", "retained"]
 
 
 def test_boot_share_diff_is_fold_mean_and_clusters_by_slide():

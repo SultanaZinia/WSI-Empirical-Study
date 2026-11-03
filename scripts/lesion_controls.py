@@ -23,6 +23,7 @@ import numpy as np
 import torch
 
 from lesionbench.config import ROOT, load_config
+from lesionbench.metrics.probe import max_overlap
 from lesionbench.preprocess.annotations import size_class
 from lesionbench.selectors.controls import (
     OracleLSRSelector,
@@ -77,9 +78,11 @@ def main():
             a = dict(f.attrs)
             if int(a["n_lesions"]) == 0:
                 continue
-            labels = f["patch_labels"][:]
             grid = grid_from_coords(f["coords"][:], int(a["patch_size_level0"]))
             ov_rows, ov_les, ov_frac = (f["overlap"][k][:] for k in ("rows", "lesion_ids", "fracs"))
+            # Oracle-Cov patch labels at the primary threshold, as in the runner (not the cached 0.10 labels)
+            t_primary = cfg["primary_overlap_threshold"]
+            labels = (max_overlap(len(grid), ov_rows, ov_frac) >= t_primary).astype(np.uint8)
             diam = f["overlap/lesion_diameter_um"][:]
         sid, n, m = str(a["slide_id"]), len(labels), int(a["n_lesions"])
         seed = zlib.crc32(sid.encode()) ^ int(cfg["seed"])

@@ -11,8 +11,9 @@ Run scripts/aggregate_runs.py first (reads its lesion_hits.csv). Reads OUTPUT_RO
 - lsr_pooled / macro, micro, itc: lesion-pooled LSR by lesion size class (exhaustive slides); vs Random by
   paired bootstrap of the difference.
 
-CIs: B replicates over slides (seeded, stratified by stratum), each scoring every fold model on the same
-resample. Holm within each (metric, stratum, K) over the compared methods. ITC is descriptive only (no p).
+CIs: B replicates over slides (seeded), each scoring every fold model on the same resample. AUC resamples all
+test slides (not stratified by class); stratum and lesion results resample the slides of that stratum / size
+class. Holm within each (metric, stratum, K) over the compared methods. ITC is descriptive only (no p).
 """
 
 import argparse
@@ -22,7 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
-from lesionbench.config import load_config
+from lesionbench.config import load_config, write_run_json
 from lesionbench.eval.aggregate import read_csv, run_dirs, write_csv
 from lesionbench.stats.inference import (
     boot_auc,
@@ -62,7 +63,8 @@ def main():
                 print(f"skipping {key}: {len(fs)}/{n_folds} folds")
 
     # per run, test split only: probs (F, n) and per-slide retention values averaged over folds
-    test_ids = sorted(r["slide_id"] for r in read_csv(runs[(REFERENCE, "32")][0] / "predictions.csv")
+    ref_K = min((K for m, K in runs if m == REFERENCE), key=int)  # smallest complete reference budget
+    test_ids = sorted(r["slide_id"] for r in read_csv(runs[(REFERENCE, ref_K)][0] / "predictions.csv")
                       if r["split"] == "test")
     pos = {s: i for i, s in enumerate(test_ids)}
     y, stratum = np.zeros(len(test_ids), dtype=int), [""] * len(test_ids)
@@ -90,7 +92,7 @@ def main():
     for h in read_csv(out / "lesion_hits.csv"):
         if h["split"] == "test" and h["exhaustive"] == "1" and (h["method"], h["K"]) in runs:
             hits[(h["method"], h["K"], h["size_class"])][h["fold"]][h["slide_id"]] += int(h["hit"])
-            if h["method"] == REFERENCE and h["K"] == "32" and h["fold"] == "0":
+            if h["method"] == REFERENCE and h["K"] == ref_K and h["fold"] == "0":
                 totals[h["size_class"]][h["slide_id"]] += 1
 
     rows = []
@@ -164,6 +166,8 @@ def main():
         for i, q in zip(idx, holm([rows[i]["p"] for i in idx]), strict=True):
             rows[i]["p_holm"] = q
     write_csv(out / "stats.csv", rows)
+    write_run_json(out, cfg, "run_stats.json", backbone=args.backbone, bootstrap_iters=B, seed=seed,
+                   reference=REFERENCE, compared=COMPARED)
     print(out / "stats.csv", f"B={B} seed={seed}")
 
 
