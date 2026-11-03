@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "scipy",
+    "scikit-image",
     "h5py",
     "shapely>=2.0",
     "scikit-learn",

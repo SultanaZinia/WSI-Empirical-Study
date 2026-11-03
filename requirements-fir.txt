@@ -8,6 +8,7 @@
 # If a package is missing from the wheelhouse, install it on a login node (internet) and note it here.
 numpy
 scipy
+scikit-image
 h5py
 shapely
 scikit-learn
