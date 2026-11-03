@@ -38,6 +38,35 @@ def test_tissue_mask_blank_slide_is_empty():
     assert not tissue_mask(np.full((8, 8, 3), 240, dtype=np.uint8)).any()
 
 
+
+def _glass_with(*boxes):
+    thumb = np.full((40, 40, 3), 235, dtype=np.uint8)
+    for y0, y1, x0, x1 in boxes:
+        thumb[y0:y1, x0:x1] = (220, 140, 190)
+    return thumb
+
+
+def test_tissue_mask_drops_thin_lines_by_mean_width():
+    # 20 x 20 block: area 400, boundary 76 px -> width 10.5 px; 1 x 30 line: area 30, boundary 30 -> width 2
+    thumb = _glass_with((2, 22, 2, 22), (30, 31, 2, 32))
+    m = tissue_mask(thumb, um_per_px=10, min_width_um=30)
+    assert m[2:22, 2:22].all() and not m[30].any()
+    assert tissue_mask(thumb, um_per_px=10, min_width_um=20)[30, 2:32].all()
+
+
+def test_tissue_mask_drops_small_components_by_area():
+    # 20 x 20 block = 400 px = 0.04 mm^2 at 10 um/px; 3 x 3 blob = 9 px = 0.0009 mm^2
+    thumb = _glass_with((2, 22, 2, 22), (30, 33, 30, 33))
+    m = tissue_mask(thumb, um_per_px=10, min_area_mm2=0.001)
+    assert m[2:22, 2:22].all() and not m[30:33, 30:33].any()
+
+
+def test_tissue_mask_median_removes_speckle_keeps_block():
+    thumb = _glass_with((2, 22, 2, 22), (35, 36, 35, 36))  # one isolated tissue pixel
+    m = tissue_mask(thumb, um_per_px=10, median_um=30)  # 3 x 3 window
+    assert m[3:21, 3:21].all() and not m[35, 35]
+    assert tissue_mask(thumb)[35, 35]  # without filtering the pixel stays
+
 # --- grid -----------------------------------------------------------------------------------------
 
 
