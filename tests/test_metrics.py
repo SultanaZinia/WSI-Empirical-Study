@@ -11,6 +11,7 @@ from lesionbench.metrics.retention import (
     retained_from_assignment,
     sdi,
     tep_at_k,
+    tss,
 )
 
 # 6 patches: lesion 0 covers rows 0-1, lesion 1 covers row 4, lesion 2 has no positive patch.
@@ -119,3 +120,16 @@ def test_lsr_curve_matches_lsr_at_k_at_label_threshold():
     ids = np.array([0, 0, -1, -1, 1, -1])
     for retained in ([0], [1, 2], [4], [2, 3], range(6)):
         assert lsr_curve(list(retained), rows, les, frac, 3, [0.10])[0.10] == lsr_at_k(list(retained), ids, 3)
+
+
+def test_tss_by_hand():
+    # 2 slots over 5 patches. Slot 0: rows 0 (0.6), 1 (0.4); slot 1: rows 1 (0.5), 2 (0.25), 3 (0.25)
+    slot, row, w = [0, 0, 1, 1, 1], [0, 1, 1, 2, 3], [0.6, 0.4, 0.5, 0.25, 0.25]
+    # lesion 0: rows 0 (overlap 1.0) and 1 (0.5); lesion 1: row 3 (0.2) and row 4 (0.02, below threshold);
+    # lesion 2: row 4 only (below threshold: unhittable); lesion 3: row 4 at 0.5 (in no slot)
+    ov_rows, ov_les, ov_f = [0, 1, 3, 4, 4, 4], [0, 0, 1, 1, 2, 3], [1.0, 0.5, 0.2, 0.02, 0.01, 0.5]
+    t = tss(slot, row, w, ov_rows, ov_les, ov_f, n_lesions=4, threshold=0.05)
+    # lesion 0: slot 0 = (1.0*0.6 + 0.5*0.4) / 1.0 = 0.8; slot 1 = 0.5*0.5 / 1.0 = 0.25 -> 0.8
+    # lesion 1: slot 1 = 0.2*0.25 / 1.0 = 0.05
+    assert t[0] == pytest.approx(0.8) and t[1] == pytest.approx(0.05)
+    assert np.isnan(t[2]) and t[3] == 0.0

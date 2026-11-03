@@ -54,6 +54,33 @@ def sdi(W, patch_labels, eps: float = 1e-6) -> np.ndarray:
     return W[:, ~y].sum(axis=1) / (eps + W[:, y].sum(axis=1))
 
 
+def tss(slot, row, weight, overlap_rows, overlap_lesions, overlap_fracs, n_lesions: int,
+        threshold: float) -> np.ndarray:
+    """Tumour slot share per lesion (docs/metrics.md Q1): max over slots k of
+    Σ_{i ∈ H_ℓ} f_iℓ W[k, i] / Σ_i W[k, i], with H_ℓ = patches overlapping lesion ℓ by ``>= threshold``
+    and f_iℓ that overlap. ``W`` is given by its nonzeros (``slot``, ``row``, ``weight``), as the runner
+    stores it. NaN for a lesion with no patch in H_ℓ (unhittable); 0 if its patches enter no slot. Empty
+    slots are skipped."""
+    slot, row, weight = np.asarray(slot), np.asarray(row), np.asarray(weight, dtype=float)
+    total = np.bincount(slot, weights=weight)
+    out = np.full(n_lesions, np.nan)
+    by_row = {}
+    for j, r in enumerate(row):
+        by_row.setdefault(int(r), []).append(j)
+    share = {}  # (lesion, slot) -> tumour-weighted mass
+    for r, lid, f in zip(overlap_rows, overlap_lesions, overlap_fracs, strict=True):
+        if f < threshold:
+            continue
+        if np.isnan(out[lid]):
+            out[lid] = 0.0
+        for j in by_row.get(int(r), []):
+            share[(int(lid), int(slot[j]))] = share.get((int(lid), int(slot[j])), 0.0) + f * weight[j]
+    for (lid, k), mass in share.items():
+        if total[k] > 0:
+            out[lid] = max(out[lid], mass / total[k])
+    return out
+
+
 def retained_from_assignment(W, rule: str = "argmax", threshold: float | None = None) -> np.ndarray:
     """Hard retention for merging methods: sorted unique patch rows a slot ``W`` (K, N) keeps.
 
