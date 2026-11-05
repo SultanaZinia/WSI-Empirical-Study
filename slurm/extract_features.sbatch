@@ -3,6 +3,7 @@
 # Re-submit to resume: finished slides are skipped.
 # Submit from the repo root:
 #   sbatch --account=$SLURM_ACCOUNT slurm/extract_features.sbatch configs/server.yaml uni
+#   VENV=$HOME/envs/lesionbench-conch sbatch --account=$SLURM_ACCOUNT slurm/extract_features.sbatch configs/server.yaml conch
 #SBATCH --job-name=features
 #SBATCH --time=12:00:00
 #SBATCH --gpus-per-node=h100:1
@@ -17,7 +18,7 @@ CONFIG=${1:-configs/server.yaml}
 BACKBONE=${2:-uni}
 
 module load StdEnv/2023 python/3.11 openslide/4.0.0
-source "$HOME/envs/lesionbench/bin/activate"
+source "${VENV:-$HOME/envs/lesionbench}/bin/activate"
 
 # Compute nodes have no internet: everything must be pre-downloaded on a login node.
 export HF_HUB_OFFLINE=1
