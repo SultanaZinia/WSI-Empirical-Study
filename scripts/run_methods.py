@@ -26,7 +26,8 @@ def main():
     ap.add_argument("--backbone", required=True)
     ap.add_argument("--method", required=True, choices=METHODS)
     ap.add_argument("--fold", type=int, required=True)
-    ap.add_argument("--budgets", type=int, nargs="*", help="default: config budgets")
+    ap.add_argument("--budgets", type=lambda b: b if b.startswith("p") else int(b), nargs="*",
+                    help="default: config budgets; pXX = XX %% of each slide's patches")
     ap.add_argument("--epoch-cap", type=int, help="smoke runs only")
     ap.add_argument("--out-name", default="runs", help="output folder under OUTPUT_ROOT (e.g. smoke)")
     args = ap.parse_args()

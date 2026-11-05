@@ -219,3 +219,30 @@ def test_external_analysis_end_to_end(cache, tmp_path, monkeypatch):
     # same fold model and slides: C16 test and "C17" AUC differ only through the stage labels used
     assert (ext_out / "analysis" / "uni" / "table.md").exists()
     assert _rows(ext_out / "analysis" / "uni" / "lesion_hits.csv")[0]["split"] == "external"
+
+
+def test_budget_k_fixed_and_percentage():
+    from lesionbench.selectors.base import budget_k
+    assert budget_k(32, 1000) == 32
+    assert budget_k("p30", 1000) == 300 and budget_k("p20", 31) == 6
+    assert budget_k("p10", 4) == 1  # never zero
+    with pytest.raises(ValueError):
+        budget_k("p0", 100)
+
+
+@pytest.mark.parametrize("method", ["random", "siimil", "nrk_abmil", "slicechat"])
+def test_percentage_budget_keeps_that_share_of_each_slide(method, cache, tmp_path):
+    slides = _slides(cache)
+    run_method_fold(method, 0, slides, CFG, tmp_path, "cpu", {}, budgets=["p30"], log=lambda m: None)
+    out = tmp_path / method / "fold0" / "Kp30"
+    rets = _rows(out / "retention.csv")
+    assert len(rets) == 10 and all(int(r["n_kept"]) == 9 for r in rets)  # round(0.3 * 30)
+    assert json.loads((out / "done.json").read_text())["K"] == "p30"
+
+
+@pytest.mark.parametrize("method", ["pmil", "tc_ssa", "lts"])
+def test_fixed_k_methods_reject_percentage_budgets(method, cache):
+    from lesionbench.eval.methods import fit
+    tr, va = fold_split(_slides(cache), 2, 0, 0)
+    with pytest.raises(ValueError, match="fixed K"):
+        fit(method, "p30", tr, va, CFG["training"], 0, "cpu", {})

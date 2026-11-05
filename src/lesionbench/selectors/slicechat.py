@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 from .abmil import GatedABMIL
-from .base import SelectionResult
+from .base import SelectionResult, budget_k
 from .mamba import BiMamba
 
 HILBERT_BITS = 10  # as in SLICEChat-encoder sorters/hilbert.py: grid coordinates must be < 1024
@@ -100,7 +100,7 @@ class SLICEChatMIL(nn.Module):
     end. In training mode ``aux_logits`` holds each pruner's auxiliary logits for the last forward pass.
     """
 
-    def __init__(self, in_dim: int, K: int, dim: int = 256, n_blocks: int = 6, block: str = "MT",
+    def __init__(self, in_dim: int, K: int | str, dim: int = 256, n_blocks: int = 6, block: str = "MT",
                  n_heads: int = 8, d_state: int = 16, expand: int = 2, dropout: float = 0.25):
         super().__init__()
         self.K, self.block = K, block
@@ -128,7 +128,7 @@ class SLICEChatMIL(nn.Module):
         h = self.proj(features[order])
         drop = torch.full((len(features),), -1, dtype=torch.long, device=features.device)
         stage_scores = torch.full((len(self.pruners), len(features)), float("nan"), device=features.device)
-        schedule = keep_schedule(len(features), self.K, len(self.pruners))
+        schedule = keep_schedule(len(features), budget_k(self.K, len(features)), len(self.pruners))
         self.aux_logits = []
         m = t = 0
         for b in range(len(self.pruners) + 1):

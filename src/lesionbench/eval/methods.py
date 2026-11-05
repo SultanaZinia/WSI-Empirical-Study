@@ -17,7 +17,7 @@ from dataclasses import dataclass
 import torch
 
 from ..selectors.abmil import ABMILTopK, GatedABMIL
-from ..selectors.base import SelectionResult
+from ..selectors.base import SelectionResult, budget_k
 from ..selectors.controls import OracleSelector, RandomSelector
 from ..selectors.lts import LTS, LTSSelector, cosine_tau
 from ..selectors.normal_bank import NormalBankSelector, cur_keys, dfi_keys
@@ -28,6 +28,7 @@ from ..train import train_mil
 from .data import Slide
 
 METHODS = ["random", "oracle", "abmil", "siimil", "nrk_abmil", "pmil", "tc_ssa", "lts", "slicechat"]
+PERCENT_METHODS = {"random", "oracle", "siimil", "nrk_abmil", "slicechat"}  # budget "pXX" allowed
 PMIL_TOP_N = 1000  # patches per training slide clustered into prototypes (official max-mil.py --n)
 log = logging.getLogger(__name__)
 
@@ -108,15 +109,19 @@ def _pmil_parts(train, tcfg, seed, device):
     return head, protos
 
 
-def fit(method: str, K: int, train: list[Slide], val: list[Slide], tcfg: dict, seed: int, device,
+def fit(method: str, K: int | str, train: list[Slide], val: list[Slide], tcfg: dict, seed: int, device,
         cache: dict, state: dict | None = None) -> Fitted:
     in_dim = train[0].features.shape[1]
+    if isinstance(K, str) and method not in PERCENT_METHODS:
+        raise ValueError(f"{method} has a fixed K budget; percentages are for {sorted(PERCENT_METHODS)}")
     if method == "random":
-        return _fixed_selection(lambda s: RandomSelector().select(s.features, K, seed=slide_seed(s, seed)),
+        return _fixed_selection(lambda s: RandomSelector().select(s.features, budget_k(K, len(s.features)),
+                                                                  seed=slide_seed(s, seed)),
                                 train, val, tcfg, seed, device, state)
     if method == "oracle":
         return _fixed_selection(
-            lambda s: OracleSelector().select(s.features, K, patch_labels=torch.from_numpy(s.patch_labels),
+            lambda s: OracleSelector().select(s.features, budget_k(K, len(s.features)),
+                                              patch_labels=torch.from_numpy(s.patch_labels),
                                               seed=slide_seed(s, seed)), train, val, tcfg, seed, device,
             state)
     if method in ("siimil", "nrk_abmil"):
@@ -127,7 +132,7 @@ def fit(method: str, K: int, train: list[Slide], val: list[Slide], tcfg: dict, s
 
         def select(s):
             if s.slide_id not in memo:
-                r = sel.select(s.features.to(device), K)
+                r = sel.select(s.features.to(device), budget_k(K, len(s.features)))
                 memo[s.slide_id] = SelectionResult(retained_idx=r.retained_idx.cpu(), scores=r.scores.cpu())
             return memo[s.slide_id]
 

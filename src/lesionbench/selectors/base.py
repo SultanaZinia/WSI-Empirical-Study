@@ -24,3 +24,13 @@ def topk_indices(scores: Tensor, K: int) -> Tensor:
     """Indices of the K highest scores; ties go to the lower row index. Returns all N rows if K > N."""
     order = torch.argsort(-scores, stable=True)
     return order[:K]
+
+
+def budget_k(K, n: int) -> int:
+    """Patches kept from a slide of ``n`` patches: ``K`` itself, or for "pXX" XX % of ``n`` (at least 1)."""
+    if isinstance(K, str) and K.startswith("p"):
+        pct = int(K[1:])
+        if not 0 < pct <= 100:
+            raise ValueError(f"percentage budget must be in (0, 100], got {K!r}")
+        return max(1, round(pct / 100 * n))
+    return K
