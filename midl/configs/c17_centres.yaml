@@ -1,0 +1,9 @@
+# CAMELYON17 centre index (stages.csv "center") -> hospital, scanner, seen in CAMELYON16?
+# Mapping inferred by matching per-centre patient pN counts in stages.csv to the CAMELYON dataset paper
+# (Litjens et al. 2018, GigaScience): rows 0, 2, 3 match exactly; 1 and 4 differ by one patient. Verify against the paper.
+centres:
+  0: {hospital: CWZ,  scanner: 3DHistech (scanned at RUMC), seen_in_c16: false, group: new_hospital_same_scanner}
+  1: {hospital: RST,  scanner: 3DHistech (scanned at RUMC), seen_in_c16: false, group: new_hospital_same_scanner}
+  2: {hospital: UMCU, scanner: Hamamatsu,                    seen_in_c16: true,  group: seen}
+  3: {hospital: RUMC, scanner: 3DHistech,                    seen_in_c16: true,  group: seen}
+  4: {hospital: LPON, scanner: Philips,                      seen_in_c16: false, group: new_hospital_new_scanner}
