@@ -37,8 +37,10 @@ from lesionbench.stats.inference import (
 )
 
 REFERENCE = "random"
-COMPARED = ["abmil", "siimil", "nrk_abmil", "pmil", "tc_ssa", "lts", "slicechat"]
-DESCRIBED = ["oracle", "abmil_full"]  # ceiling and no-budget reference: estimates and CIs only
+COMPARED = ["siimil", "nrk_abmil", "pmil", "tc_ssa", "lts", "slicechat"]  # published compressors
+# estimates and CIs only: ceiling, no-budget reference, and Top-K ABMIL (our post-hoc construction, not a
+# published compressor; appendix at most, decision 2026-11-08)
+DESCRIBED = ["oracle", "abmil_full", "abmil"]
 STRATA = ["macro", "micro", "itc"]
 
 
