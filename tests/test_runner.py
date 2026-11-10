@@ -48,6 +48,7 @@ def _write_slide(root, sid, tumour, g):
         for k, v in {"features": feats, "coords": coords, "patch_labels": labels, "lesion_ids": ids}.items():
             f.create_dataset(k, data=v)
         f.attrs.update(attrs)
+    np.save(root / "histoselect" / f"{sid}.npy", (np.arange(30) >= 15).astype(np.int8))  # 2 tissue types
 
 
 @pytest.fixture(scope="module")
@@ -55,6 +56,8 @@ def cache(tmp_path_factory):
     root = tmp_path_factory.mktemp("cache")
     (root / "patches").mkdir()
     (root / "uni").mkdir()
+    (root / "histoselect").mkdir()
+    np.save(root / "histoselect" / "question.npy", np.ones(5, np.float32))
     g = np.random.default_rng(0)
     for i in range(6):
         _write_slide(root, f"tumor_{i:03d}", True, g)
@@ -126,7 +129,7 @@ def test_every_method_runs_end_to_end(method, cache, tmp_path, monkeypatch):
     if method == "slicechat":
         assert "layer_of_drop/test_000" in arrays.files
         assert arrays["stage_scores/test_000"].shape[1] == 30
-    if method in ("abmil", "siimil", "nrk_abmil", "pmil", "lts", "dtfd"):
+    if method in ("abmil", "siimil", "nrk_abmil", "pmil", "lts", "dtfd", "histoselect"):
         assert arrays["scores/test_000"].shape == (30,) and arrays["scores/test_000"].dtype == np.float16
     assert (out / "model.pt").exists()
     if method == "pmil":  # the per-fold max-MIL head before PMIL's per-K fine-tuning (a FROC scorer)

@@ -26,7 +26,7 @@ from lesionbench.eval.aggregate import (
 )
 
 ORDER = ["random", "abmil", "siimil", "nrk_abmil", "pmil", "tc_ssa", "lts", "slicechat", "dtfd",
-         "oracle", "abmil_full"]
+         "histoselect", "oracle", "abmil_full"]
 
 
 def main():

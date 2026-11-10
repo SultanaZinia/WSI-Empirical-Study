@@ -20,6 +20,7 @@ from ..selectors.abmil import ABMILTopK, GatedABMIL
 from ..selectors.base import SelectionResult, budget_k
 from ..selectors.controls import OracleSelector, RandomSelector
 from ..selectors.dtfd import DTFD, DTFDSelector, train_dtfd
+from ..selectors.histoselect import HistoSelect, HistoSelectSelector, ib_loss
 from ..selectors.lts import LTS, LTSSelector, cosine_tau
 from ..selectors.normal_bank import NormalBankSelector, cur_keys, dfi_keys
 from ..selectors.pmil import PMIL, PMILSelector, affinity_prototypes, maxmil_pretrain, train_pmil
@@ -28,7 +29,8 @@ from ..selectors.tcssa import TCSSA, TCSSASelector, train_tcssa
 from ..train import train_mil
 from .data import Slide
 
-METHODS = ["random", "oracle", "abmil", "siimil", "nrk_abmil", "pmil", "tc_ssa", "lts", "slicechat", "dtfd"]
+METHODS = ["random", "oracle", "abmil", "siimil", "nrk_abmil", "pmil", "tc_ssa", "lts", "slicechat", "dtfd",
+           "histoselect"]
 PERCENT_METHODS = {"random", "oracle", "siimil", "nrk_abmil", "slicechat"}  # budget "pXX" allowed
 PMIL_TOP_N = 1000  # patches per training slide clustered into prototypes (official max-mil.py --n)
 log = logging.getLogger(__name__)
@@ -260,6 +262,33 @@ def fit(method: str, K: int | str, train: list[Slide], val: list[Slide], tcfg: d
         @torch.no_grad()
         def prob(s, r):  # Tier 2 on the kept patches only
             return _p(model.predict_kept(s.features[r.retained_idx].to(device)))
+
+        return Fitted(select, prob, hist, model)
+    if method == "histoselect":
+        if train[0].groups is None or train[0].question is None:
+            raise ValueError("histoselect needs CACHE_ROOT/histoselect/ (run scripts/histoselect_groups.py)")
+        q_dim = train[0].question.shape[0]
+
+        def bag(s):
+            return (s.features, s.groups, s.question)
+
+        tc = {**tcfg, "max_epochs": _cap(tcfg["max_epochs"], tcfg)}
+        if state is not None:
+            model, hist = _loaded(HistoSelect(in_dim, q_dim, K, dropout=tcfg["dropout"]), state, device), []
+        else:
+            model, hist = train_mil(lambda: HistoSelect(in_dim, q_dim, K, dropout=tcfg["dropout"]),
+                                    [(bag(s), s.label) for s in train], [(bag(s), s.label) for s in val], tc,
+                                    seed, extra_loss=ib_loss, device=device)
+        model.eval()
+
+        def select(s):
+            r = HistoSelectSelector(model).select(s.features.to(device), K, groups=s.groups.to(device),
+                                                  question=s.question.to(device))
+            return SelectionResult(retained_idx=r.retained_idx.cpu(), scores=r.scores.cpu())
+
+        @torch.no_grad()
+        def prob(s, r):  # the same top-K_i selection as select(), then the head on the kept patches
+            return _p(model(tuple(t.to(device) for t in bag(s)))[0])
 
         return Fitted(select, prob, hist, model)
     raise ValueError(f"unknown method {method!r}")
