@@ -5,8 +5,9 @@ unchanged: projector -> per-group prototypes (mean projected feature of each CON
 ``SimpleGroupSelector`` (group keep probability g_i from [prototype, projected question]) ->
 ``PatchSelector`` (patch probability p_j from [patch, projected question]) -> top-K_i patches of each
 group -> kept features weighted by the straight-through value g_i * p_j. Training adds the two
-information-bottleneck terms: BCE of the group / patch logits toward sigmoid(cos(question, prototype or patch) * exp(4.0315) + bias) priors, weighted by beta
-(0 -> 0.2) and gamma (0 -> 0.1), annealed linearly over 5,000 training steps.
+information-bottleneck terms: BCE of the group / patch logits toward sigmoid(cos(question, prototype or
+patch) * exp(4.0315) + bias) priors, weighted by beta (0 -> 0.2) and gamma (0 -> 0.1), annealed linearly over
+5,000 training steps.
 
 Changes (docs/deviations.md, 2026-11-10): one fixed question; exactly K kept, split over groups by
 ``allocate``; no LongNet before selection; the LLM is replaced by a gated-ABMIL head.
