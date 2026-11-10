@@ -17,6 +17,13 @@ CFG = {"seed": 0, "budgets": [4], "lsr_overlap_thresholds": [0.0, 0.1], "primary
 PS = 512  # patch size at level 0
 
 
+@pytest.fixture(autouse=True)
+def _dtfd_two_pseudo_bags(monkeypatch):
+    """The test budget K = 4 needs M = 2 pseudo-bags for DTFD MaxMinS (real runs: M = 4, K divisible by 8)."""
+    from lesionbench.selectors.dtfd import DTFD
+    monkeypatch.setattr(methods, "DTFD", lambda in_dim: DTFD(in_dim, n_groups=2))
+
+
 def _write_slide(root, sid, tumour, g):
     """6 x 5 grid of patches in two tissue types (so PMIL finds > 1 prototype); tumour slides carry one 2 x 2
     lesion (+4 shift) covering 4 patches."""
@@ -119,7 +126,7 @@ def test_every_method_runs_end_to_end(method, cache, tmp_path, monkeypatch):
     if method == "slicechat":
         assert "layer_of_drop/test_000" in arrays.files
         assert arrays["stage_scores/test_000"].shape[1] == 30
-    if method in ("abmil", "siimil", "nrk_abmil", "pmil", "lts"):
+    if method in ("abmil", "siimil", "nrk_abmil", "pmil", "lts", "dtfd"):
         assert arrays["scores/test_000"].shape == (30,) and arrays["scores/test_000"].dtype == np.float16
     assert (out / "model.pt").exists()
     if method == "pmil":  # the per-fold max-MIL head before PMIL's per-K fine-tuning (a FROC scorer)

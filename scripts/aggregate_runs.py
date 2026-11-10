@@ -25,8 +25,8 @@ from lesionbench.eval.aggregate import (
     write_csv,
 )
 
-ORDER = ["random", "abmil", "siimil", "nrk_abmil", "pmil", "tc_ssa", "lts", "slicechat", "oracle",
-         "abmil_full"]
+ORDER = ["random", "abmil", "siimil", "nrk_abmil", "pmil", "tc_ssa", "lts", "slicechat", "dtfd",
+         "oracle", "abmil_full"]
 
 
 def main():

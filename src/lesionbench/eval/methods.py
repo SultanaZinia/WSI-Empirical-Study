@@ -19,6 +19,7 @@ import torch
 from ..selectors.abmil import ABMILTopK, GatedABMIL
 from ..selectors.base import SelectionResult, budget_k
 from ..selectors.controls import OracleSelector, RandomSelector
+from ..selectors.dtfd import DTFD, DTFDSelector, train_dtfd
 from ..selectors.lts import LTS, LTSSelector, cosine_tau
 from ..selectors.normal_bank import NormalBankSelector, cur_keys, dfi_keys
 from ..selectors.pmil import PMIL, PMILSelector, affinity_prototypes, maxmil_pretrain, train_pmil
@@ -27,7 +28,7 @@ from ..selectors.tcssa import TCSSA, TCSSASelector, train_tcssa
 from ..train import train_mil
 from .data import Slide
 
-METHODS = ["random", "oracle", "abmil", "siimil", "nrk_abmil", "pmil", "tc_ssa", "lts", "slicechat"]
+METHODS = ["random", "oracle", "abmil", "siimil", "nrk_abmil", "pmil", "tc_ssa", "lts", "slicechat", "dtfd"]
 PERCENT_METHODS = {"random", "oracle", "siimil", "nrk_abmil", "slicechat"}  # budget "pXX" allowed
 PMIL_TOP_N = 1000  # patches per training slide clustered into prototypes (official max-mil.py --n)
 log = logging.getLogger(__name__)
@@ -241,6 +242,24 @@ def fit(method: str, K: int | str, train: list[Slide], val: list[Slide], tcfg: d
         @torch.no_grad()
         def prob(s, r):
             return _p(model((s.features.to(device), s.grid.to(device)))[0])
+
+        return Fitted(select, prob, hist, model)
+    if method == "dtfd":
+        if state is not None:
+            model, hist = _loaded(DTFD(in_dim), state, device), []
+        else:
+            model, hist = train_dtfd(lambda: DTFD(in_dim), [(s.features, s.label) for s in train],
+                                     [(s.features, s.label, slide_seed(s, seed)) for s in val], K, seed,
+                                     epochs=_cap(200, tcfg), device=device)
+        model.eval()
+
+        def select(s):  # one pseudo-bag split per slide, seeded
+            r = DTFDSelector(model).select(s.features.to(device), K, seed=slide_seed(s, seed))
+            return SelectionResult(retained_idx=r.retained_idx.cpu(), scores=r.scores.cpu())
+
+        @torch.no_grad()
+        def prob(s, r):  # Tier 2 on the kept patches only
+            return _p(model.predict_kept(s.features[r.retained_idx].to(device)))
 
         return Fitted(select, prob, hist, model)
     raise ValueError(f"unknown method {method!r}")

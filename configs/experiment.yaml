@@ -51,6 +51,7 @@ methods:                     # verified against papers/code on 2026-10-31; see d
   - slicechat                # Bozkurt et al. 2026, arXiv 2609.24894, github.com/ali-kerem/SLICEChat (progressive pruning)
   - tc_ssa                   # Chen, Young, Xu 2026, arXiv 2603.01143, github.com/OzzyChen97/TC-SSA (merging, K slots)
   - pmil                     # Yu et al. 2023, Med Image Anal 85:102748, github.com/zihou98/PMIL (top-K + prototypes)
+  - dtfd                     # Zhang et al. 2022, CVPR, arXiv 2203.12081, github.com/hrzhang1123/DTFD-MIL (MaxMinS, M = 4; added 2026-11-10)
 
 training:
   n_folds: 5

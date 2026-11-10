@@ -17,6 +17,7 @@ Shared changes for every method (design of the study, not per-method choices): f
 | TC-SSA | Chen et al. 2026; OzzyChen97/TC-SSA @ fbadc98 | Yes, line by line (`moe_compressor.py`, `wsi_classifier.py`, `tools/train.py` defaults) | No AMP; slide-classification path, not the VQA/LLM path | **32** slots default (configs 32–128), UNI 1024-d | **Same** | Faithful |
 | LTS | Chen et al. arXiv 2606.08641; no code | Not checkable | Scorer size, Φ_K, τ schedule, denoiser width guessed; LLM replaced by gated-ABMIL head | **K = 32** (only budget in paper) | **Same** | Re-implemented |
 | SLICEChat-style | Bozkurt et al. (WACV 2027); ali-kerem/SLICEChat-encoder @ c665990 | Yes: Cropr pruner (1 query, pre-softmax score, detached aux), Hilbert sort, one contiguous window removed per stage, 5 pruners | No MAE pretraining or CLIP pruner training (joint from scratch, slide labels); d 256 vs 768; "MT" vs "MMMT" × 6; no 2D RoPE; no drop-path | **20 %** kept (`pruning_rate 0.8`; per stage keep 72.5 %) | **~30× fewer** (per stage keep ~36 %, i.e. ~64 % removed as one region) | Adapted, far outside designed budget |
+| DTFD-MIL (added 2026-11-10) | Zhang et al. 2022; hrzhang1123/DTFD-MIL @ 10964f4 | Yes: random pseudo-bags, Tier-1 AB-MIL, Grad-CAM instance probability, MaxMinS distillation, Tier-2 AB-MIL, two optimisers (`Main_DTFD_MIL.py`) | M = 4 (paper 5); K/(2M) max + K/(2M) min per pseudo-bag (paper 1 + 1); seeded test split | **10 patches** (M = 5, MaxMinS) | 3.2× more | Adapted |
 
 ## What this means for the results
 
