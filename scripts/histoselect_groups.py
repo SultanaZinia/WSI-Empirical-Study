@@ -35,6 +35,14 @@ TEMPLATES = ["an H&E stained image of CLASSNAME.", "a photomicrograph showing CL
 QUESTION = "Is there metastatic carcinoma in this lymph node?"
 
 
+def conch_tokenize(tokenizer, texts: list[str]) -> torch.Tensor:
+    """``conch.open_clip_custom.tokenize`` with ``tokenizer(...)`` instead of ``batch_encode_plus`` (removed
+    in transformers 5): same arguments (max_length 127, padding to max length, truncation), then one <pad>."""
+    ids = tokenizer(texts, max_length=127, add_special_tokens=True, return_token_type_ids=False,
+                    truncation=True, padding="max_length", return_tensors="pt")["input_ids"]
+    return torch.nn.functional.pad(ids, (0, 1), value=tokenizer.pad_token_id)
+
+
 def tissue_groups(feats: np.ndarray, proj: torch.Tensor, class_emb: torch.Tensor) -> np.ndarray:
     """Group index per patch: argmax cosine similarity of the projected patch embedding to each class."""
     z = torch.nn.functional.normalize(torch.from_numpy(feats).float() @ proj, dim=-1)
@@ -50,7 +58,7 @@ def main():
     out = cache / "histoselect"
     out.mkdir(parents=True, exist_ok=True)
 
-    from conch.open_clip_custom import create_model_from_pretrained, get_tokenizer, tokenize
+    from conch.open_clip_custom import create_model_from_pretrained, get_tokenizer
     from huggingface_hub import hf_hub_download
 
     weights = hf_hub_download("MahmoodLab/CONCH", "pytorch_model.bin")
@@ -59,11 +67,11 @@ def main():
     tok = get_tokenizer()
     with torch.no_grad():
         prompts = [t.replace("CLASSNAME", c) for c in CLASSES for t in TEMPLATES]
-        text = model.encode_text(tokenize(texts=prompts, tokenizer=tok))
+        text = model.encode_text(conch_tokenize(tok, prompts))
         text = torch.nn.functional.normalize(text, dim=-1)
         text = text.reshape(len(CLASSES), len(TEMPLATES), -1).mean(dim=1)
         class_emb = torch.nn.functional.normalize(text, dim=-1)
-        question = model.encode_text(tokenize(texts=[QUESTION], tokenizer=tok))[0]
+        question = model.encode_text(conch_tokenize(tok, [QUESTION]))[0]
         proj = model.visual.proj_contrast.detach().float()
     np.save(out / "question.npy", question.numpy().astype(np.float32))
 
