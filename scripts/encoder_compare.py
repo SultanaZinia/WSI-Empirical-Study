@@ -36,7 +36,8 @@ from lesionbench.stats.inference import (
     slide_mean,
 )
 
-COMPARED = ["siimil", "nrk_abmil", "pmil", "tc_ssa", "lts", "slicechat"]  # published compressors (as run_stats)
+# published compressors (as run_stats)
+COMPARED = ["siimil", "nrk_abmil", "pmil", "tc_ssa", "lts", "slicechat", "dtfd", "histoselect"]
 DESCRIBED = ["abmil_full"]  # no-compression reference: estimates only
 STRATA = ["macro", "micro", "itc"]
 
