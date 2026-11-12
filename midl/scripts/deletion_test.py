@@ -53,7 +53,8 @@ def subset(s: Slide, keep: np.ndarray, tag: str) -> Slide:
     t = torch.from_numpy(idx)
     return replace(s, slide_id=f"{s.slide_id}#{tag}", features=s.features[t], grid=s.grid[t],
                    patch_labels=s.patch_labels[idx], lesion_ids=s.lesion_ids[idx],
-                   overlap=(remap[rows[m]], les[m], fr[m]))
+                   overlap=(remap[rows[m]], les[m], fr[m]),
+                   groups=None if s.groups is None else s.groups[t])
 
 
 def ring(grid: np.ndarray, mask: np.ndarray) -> np.ndarray:
