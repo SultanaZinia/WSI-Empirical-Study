@@ -61,6 +61,7 @@ def test_cross_validate_and_patient_rows():
     assert sorted(r["slide_id"] for r in rows) == sorted(bags)  # every slide predicted once, out of fold
     assert all(folds[r["patient"]] == r["cv_fold"] for r in rows)
     assert all(abs(sum(r[f"p_{k}"] for k in SLIDE_CLASSES) - 1) < 1e-5 for r in rows)
+    assert all(0 <= r["best_epoch"] < r["epochs"] for r in rows)
     pr = patient_rows(rows, patient_stage)
     assert len(pr) == 10 and all(r["n_slides"] == 5 for r in pr)
     assert rows == cross_validate(bags, slide_stage, patient_of, folds, tcfg, seed=0)  # deterministic

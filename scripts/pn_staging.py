@@ -6,9 +6,10 @@
 Kept rows: OUTPUT_ROOT/external/<backbone>/<method>/fold<f>/K<K>/retained.npz (written by run_external.py);
 ``abmil_full`` = every patch (no compression; source fold 0 only, as its bag does not depend on the fold).
 For each source fold f and K: a 4-class gated-ABMIL head (negative / itc / micro / macro; shared CLAM recipe
-from the source config) on the kept features, 5-fold cross-validation over CAMELYON17 patients stratified by pN
-(staging.patient_folds), then pN per patient by the challenge rules. Labels: DATA_ROOT/stages.csv.
-Writes OUTPUT_ROOT/staging/<backbone>/<method>/fold<f>/K<K>/{slides.csv, patients.csv, done.json}.
+from the source config) on the kept features, 5-fold cross-validation over CAMELYON17 patients stratified by
+pN (staging.patient_folds), then pN per patient by the challenge rules. Labels: DATA_ROOT/stages.csv.
+Writes OUTPUT_ROOT/<out-name>/<backbone>/<method>/fold<f>/K<K>/{slides.csv, patients.csv, done.json}
+(out-name default "staging").
 Finished (f, K) are skipped.
 """
 
@@ -54,13 +55,15 @@ def main():
     ap.add_argument("--method", required=True)
     ap.add_argument("--budgets", type=int, nargs="*", help="default: source config budgets")
     ap.add_argument("--folds", type=int, nargs="*", help="source folds (default: all)")
+    ap.add_argument("--out-name", default="staging",
+                    help="output folder under OUTPUT_ROOT (default: staging)")
     args = ap.parse_args()
 
     cfg, src = load_config(args.config), load_config(args.source_config)
     tcfg, seed = src["training"], int(src["seed"])
     out_root = Path(cfg["paths"]["output_root"])
     ext = out_root / "external" / args.backbone / args.method
-    out = out_root / "staging" / args.backbone / args.method
+    out = out_root / args.out_name / args.backbone / args.method
     full = args.method == "abmil_full"
     runs = [(f, "full") for f in [0]] if full else \
         [(f, K) for f in (args.folds or range(tcfg["n_folds"])) for K in (args.budgets or src["budgets"])]
@@ -99,6 +102,7 @@ def main():
             "git_sha": sha.strip(), "backbone": args.backbone, "method": args.method, "K": K,
             "source_fold": f,
             "seed": seed, "device": device, "n_slides": len(rows), "n_patients": len(prs), "kappa": kappa,
+            "best_epochs": sorted({r["best_epoch"] for r in rows}),
             "total_seconds": round(time.time() - t0, 1)}, indent=1))
         print(f"{args.method} fold {f} K {K}: kappa {kappa:.3f}, {time.time() - t0:.0f} s", flush=True)
 

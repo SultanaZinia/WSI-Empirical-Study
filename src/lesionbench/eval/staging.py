@@ -55,7 +55,8 @@ def cross_validate(bags: dict, slide_stage: dict[str, str], patient_of: dict[str
                    tcfg: dict, seed: int, device="cpu", dropout: float = 0.25) -> list[dict]:
     """Out-of-fold 4-class slide calls. ``bags``: slide -> kept features (n, D). For test fold c, the head is
     trained on the other folds except c + 1 (mod n), which is its early-stopping validation fold; seed + c, so
-    every method sees the same folds and initial weights. Returns one row per slide."""
+    every method sees the same folds and initial weights. Returns one row per slide, with the round's epochs
+    run and best epoch (the restored weights)."""
     n_folds = max(folds.values()) + 1
     cls = {c: i for i, c in enumerate(SLIDE_CLASSES)}
     in_dim = next(iter(bags.values())).shape[1]
@@ -68,12 +69,15 @@ def cross_validate(bags: dict, slide_stage: dict[str, str], patient_of: dict[str
         model, hist = train_mil(lambda: GatedABMIL(in_dim, dropout=dropout, n_classes=len(SLIDE_CLASSES)),
                                 [(bags[s], cls[slide_stage[s]]) for s in train],
                                 [(bags[s], cls[slide_stage[s]]) for s in val], tcfg, seed + c, device=device)
+        val_losses = [h["val_loss"] for h in hist]
+        best_epoch = int(np.argmin(val_losses))
         model.eval()
         with torch.no_grad():
             for s in test:
                 p = torch.softmax(model(bags[s].to(device))[0], dim=0).cpu().numpy()
                 rows.append({"slide_id": s, "patient": patient_of[s], "cv_fold": c, "true": slide_stage[s],
                              "pred": SLIDE_CLASSES[int(p.argmax())], "epochs": len(hist),
+                             "best_epoch": best_epoch, "best_val_loss": float(val_losses[best_epoch]),
                              **{f"p_{k}": float(v) for k, v in zip(SLIDE_CLASSES, p, strict=True)}})
     return rows
 
