@@ -65,3 +65,33 @@ def test_cross_validate_and_patient_rows():
     pr = patient_rows(rows, patient_stage)
     assert len(pr) == 10 and all(r["n_slides"] == 5 for r in pr)
     assert rows == cross_validate(bags, slide_stage, patient_of, folds, tcfg, seed=0)  # deterministic
+
+
+def test_epoch_curves_follow_cross_validate():
+    import numpy as np
+    import torch
+
+    from lesionbench.eval.staging import SLIDE_CLASSES, cross_validate, epoch_curves
+
+    g = torch.Generator().manual_seed(1)
+    patient_stage, slide_stage, patient_of, bags = {}, {}, {}, {}
+    for i in range(10):
+        p = f"patient_{i:03d}"
+        nodes = [SLIDE_CLASSES[i % 4]] + ["negative"] * 4
+        patient_stage[p] = pn_stage(nodes)
+        for j, st in enumerate(nodes):
+            s = f"{p}_node_{j}"
+            slide_stage[s], patient_of[s] = st, p
+            bags[s] = torch.randn(4, 6, generator=g) + 1.0 * SLIDE_CLASSES.index(st)
+    folds = patient_folds(patient_stage, 5, seed=0)
+    tcfg = {"lr": 1e-3, "weight_decay": 0.0, "patience": 3, "stop_epoch": 4, "max_epochs": 30}
+    horizon = 12
+    cur = epoch_curves(bags, slide_stage, patient_of, folds, patient_stage, tcfg, seed=0, horizon=horizon)
+    assert len(cur) == 5 * horizon and {r["epoch"] for r in cur} == set(range(1, horizon + 1))
+    rows = cross_validate(bags, slide_stage, patient_of, folds, tcfg, seed=0)
+    for c in range(5):  # same trajectory: the early-stopped best epoch is the curve's loss minimum
+        r = next(r for r in rows if r["cv_fold"] == c)
+        if r["best_epoch"] + 1 <= horizon:
+            ce = [x["val_ce"] for x in cur if x["cv_fold"] == c]
+            assert ce[r["best_epoch"]] == pytest.approx(r["best_val_loss"], rel=1e-5)
+            assert int(np.argmin(ce)) == r["best_epoch"] or min(ce) < r["best_val_loss"]

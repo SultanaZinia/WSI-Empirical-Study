@@ -25,7 +25,13 @@ import numpy as np
 import torch
 
 from lesionbench.config import ROOT, load_config
-from lesionbench.eval.staging import cross_validate, patient_folds, patient_rows, quadratic_kappa
+from lesionbench.eval.staging import (
+    cross_validate,
+    epoch_curves,
+    patient_folds,
+    patient_rows,
+    quadratic_kappa,
+)
 
 
 def read_stages(path):
@@ -57,6 +63,9 @@ def main():
     ap.add_argument("--folds", type=int, nargs="*", help="source folds (default: all)")
     ap.add_argument("--out-name", default="staging",
                     help="output folder under OUTPUT_ROOT (default: staging)")
+    ap.add_argument("--curves", type=int, metavar="H",
+                    help="diagnostic: train H epochs without early stopping and write curves.csv "
+                         "(inner-validation metrics per epoch, staging.epoch_curves) instead of predictions")
     args = ap.parse_args()
 
     cfg, src = load_config(args.config), load_config(args.source_config)
@@ -92,6 +101,16 @@ def main():
         t0 = time.time()
         d = out / f"fold{f}" / f"K{K}"
         d.mkdir(parents=True, exist_ok=True)
+        if args.curves:
+            cur = epoch_curves(bags[(f, K)], slide_stage, patient_of, folds, patient_stage, tcfg, seed,
+                               args.curves, device=device, dropout=tcfg["dropout"])
+            write_csv(d / "curves.csv", cur)
+            (d / "done.json").write_text(json.dumps({
+                "git_sha": sha.strip(), "mode": "curves", "horizon": args.curves, "backbone": args.backbone,
+                "method": args.method, "K": K, "source_fold": f, "seed": seed, "device": device,
+                "total_seconds": round(time.time() - t0, 1)}, indent=1))
+            print(f"{args.method} fold {f} K {K}: curves, {time.time() - t0:.0f} s", flush=True)
+            continue
         rows = cross_validate(bags[(f, K)], slide_stage, patient_of, folds, tcfg, seed, device=device,
                               dropout=tcfg["dropout"])
         prs = patient_rows(rows, patient_stage)

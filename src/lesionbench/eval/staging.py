@@ -89,3 +89,64 @@ def patient_rows(slide_rows: list[dict], patient_stage: dict[str, str]) -> list[
         by.setdefault(r["patient"], []).append(r["pred"])
     return [{"patient": p, "true": patient_stage[p], "pred": pn_stage(v), "n_slides": len(v)}
             for p, v in sorted(by.items())]
+
+
+def _val_metrics(model, val: list[str], bags: dict, slide_stage: dict[str, str], patient_of: dict[str, str],
+                 patient_stage: dict[str, str], device) -> dict:
+    """Inner-validation metrics of the current weights: cross-entropy (plain and class-balanced: mean of the
+    four per-class means), recall per slide class, the two small-lesion errors, false positives on negatives,
+    and pN quadratic kappa over the validation patients."""
+    cls = {c: i for i, c in enumerate(SLIDE_CLASSES)}
+    model.eval()
+    ce, pred = {}, {}
+    with torch.no_grad():
+        for s in val:
+            p = torch.softmax(model(bags[s].to(device))[0], dim=0).cpu().numpy()
+            ce[s] = float(-np.log(max(p[cls[slide_stage[s]]], 1e-12)))
+            pred[s] = SLIDE_CLASSES[int(p.argmax())]
+    out = {"val_ce": float(np.mean(list(ce.values())))}
+    per_class = []
+    for c in SLIDE_CLASSES:
+        ss = [s for s in val if slide_stage[s] == c]
+        per_class.append(np.mean([ce[s] for s in ss]) if ss else np.nan)
+        out[f"recall_{c}"] = float(np.mean([pred[s] == c for s in ss])) if ss else float("nan")
+        out[f"n_{c}"] = len(ss)
+    out["val_ce_balanced"] = float(np.nanmean(per_class))
+    out["itc_to_negative"] = sum(slide_stage[s] == "itc" and pred[s] == "negative" for s in val)
+    out["micro_to_negative"] = sum(slide_stage[s] == "micro" and pred[s] == "negative" for s in val)
+    out["negative_false_pos"] = sum(slide_stage[s] == "negative" and pred[s] != "negative" for s in val)
+    by = {}
+    for s in val:
+        by.setdefault(patient_of[s], []).append(pred[s])
+    pts = sorted(by)
+    out["val_pn_kappa"] = quadratic_kappa([patient_stage[p] for p in pts], [pn_stage(by[p]) for p in pts])
+    return out
+
+
+def epoch_curves(bags: dict, slide_stage: dict[str, str], patient_of: dict[str, str], folds: dict[str, int],
+                 patient_stage: dict[str, str], tcfg: dict, seed: int, horizon: int, device="cpu",
+                 dropout: float = 0.25) -> list[dict]:
+    """Diagnostic for checkpoint selection: the same CV rounds and seeds as ``cross_validate``, trained for a
+    fixed ``horizon`` (no early stop), with inner-validation metrics (``_val_metrics``) after every epoch.
+    Row ``epoch = e`` = weights after e epochs (e = 1..horizon); evaluation uses no random numbers, so the
+    training trajectory is the one ``cross_validate`` follows. Test-fold patients are never scored."""
+    n_folds = max(folds.values()) + 1
+    cls = {c: i for i, c in enumerate(SLIDE_CLASSES)}
+    in_dim = next(iter(bags.values())).shape[1]
+    fixed = {**tcfg, "max_epochs": horizon + 1, "patience": horizon + 2, "stop_epoch": horizon + 1}
+    rows = []
+    for c in range(n_folds):
+        def part(k):
+            return [s for s in sorted(bags) if folds[patient_of[s]] == k]
+        val = part((c + 1) % n_folds)
+        train = [s for s in sorted(bags) if folds[patient_of[s]] not in (c, (c + 1) % n_folds)]
+
+        def log(model, epoch, c=c, val=val):
+            if epoch > 0:
+                m = _val_metrics(model, val, bags, slide_stage, patient_of, patient_stage, device)
+                rows.append({"cv_fold": c, "epoch": epoch, **m})
+
+        train_mil(lambda: GatedABMIL(in_dim, dropout=dropout, n_classes=len(SLIDE_CLASSES)),
+                  [(bags[s], cls[slide_stage[s]]) for s in train],
+                  [(bags[s], cls[slide_stage[s]]) for s in val], fixed, seed + c, on_epoch=log, device=device)
+    return rows
