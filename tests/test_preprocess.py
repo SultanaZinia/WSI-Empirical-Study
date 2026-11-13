@@ -264,3 +264,11 @@ def test_lesion_overlaps_keeps_every_pair_above_zero():
 def test_lesion_overlaps_empty():
     rows, ids, fracs = lesion_overlaps(COORDS, 10, [])
     assert len(rows) == len(ids) == len(fracs) == 0
+
+
+def test_patch_grid_offset_shifts_lattice():
+    kw = dict(mask=np.ones((5, 10), dtype=bool), mask_downsample=10, level0_size=(100, 50), patch_size_l0=20)
+    np.testing.assert_array_equal(patch_grid(**kw, offset_l0=0), patch_grid(**kw))
+    shifted = patch_grid(**kw, offset_l0=10)
+    assert shifted[0].tolist() == [10, 10]
+    assert shifted.shape == (8, 2)  # 100x50 slide, 20px cells from (10,10): 4 columns x 2 rows

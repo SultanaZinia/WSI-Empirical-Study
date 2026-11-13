@@ -23,7 +23,8 @@ def preprocess_slide(slide_id, thumb_rgb, mask_downsample, level0_size, mpp0, xm
     p = cfg["preprocess"]
     ps0 = patch_size_level0(p["patch_size"], p["target_mpp"], mpp0)
     mask = slide_tissue_mask(thumb_rgb, mask_downsample, mpp0, cfg)
-    coords = patch_grid(mask, mask_downsample, level0_size, ps0, p["min_tissue_fraction"])
+    offset = int(round(p.get("grid_offset", 0.0) * ps0))  # fraction of a patch; 0 = the original grid
+    coords = patch_grid(mask, mask_downsample, level0_size, ps0, p["min_tissue_fraction"], offset)
     les = []
     if xml_path is not None:
         les = lesions(*read_asap_xml(xml_path), merge_px=p["lesion_merge_um"] / mpp0)
