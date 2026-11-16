@@ -156,12 +156,13 @@ def main():
     ap.add_argument("--backbone", default="uni")
     ap.add_argument("--runs", default="runs", help="run folder under OUTPUT_ROOT")
     ap.add_argument("--scorer-auc", action="store_true")
+    ap.add_argument("--out-name", default="froc", help="output folder under OUTPUT_ROOT (dated for reruns)")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     cfg = load_config(args.config)
     out = Path(cfg["paths"]["output_root"])
     run_root = out / args.runs / args.backbone
-    out_root = out / "froc" / args.backbone
+    out_root = out / args.out_name / args.backbone
     out_root.mkdir(parents=True, exist_ok=True)
     if args.scorer_auc:
         scorer_auc(cfg, args.backbone, run_root, out_root)

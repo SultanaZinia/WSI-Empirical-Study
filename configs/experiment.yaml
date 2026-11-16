@@ -4,7 +4,7 @@ preprocess:
   thumbnail_magnification: 1.25
   patch_size: 256
   target_mpp: 0.5            # 20x equivalent
-  label_overlap_threshold: 0.10
+  label_overlap_threshold: 0.10  # cached only; analyses relabel at primary_overlap_threshold
   min_tissue_fraction: 0.0   # keep any grid cell with tissue in it (TRIDENT --min_tissue_proportion default)
   tissue:                    # tissue_mask cleaning, physical units; 0 = off (raw Otsu mask, grid v1)
     median_um: 0
